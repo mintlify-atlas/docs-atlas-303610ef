@@ -1,0 +1,147 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Anserini",
+  "projectDescription": "A Lucene toolkit for reproducible information retrieval research",
+  "theme": "aspen",
+  "primaryColor": "#242b2c",
+  "lightColor": "#040404",
+  "darkColor": "#6a6a6d",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/information-retrieval",
+              "concepts/indexing",
+              "concepts/searching",
+              "concepts/evaluation"
+            ]
+          },
+          {
+            "group": "Indexing",
+            "pages": [
+              "indexing/index-collection",
+              "indexing/index-options",
+              "indexing/prebuilt-indexes",
+              "indexing/dense-vectors"
+            ]
+          },
+          {
+            "group": "Search",
+            "pages": [
+              "search/sparse-retrieval",
+              "search/dense-retrieval",
+              "search/hybrid-retrieval",
+              "search/reranking"
+            ]
+          },
+          {
+            "group": "Encoders",
+            "pages": [
+              "encoders/overview",
+              "encoders/dense-encoders",
+              "encoders/sparse-encoders",
+              "encoders/onnx"
+            ]
+          },
+          {
+            "group": "Regression Testing",
+            "pages": [
+              "regressions/overview",
+              "regressions/ms-marco",
+              "regressions/beir",
+              "regressions/running-regressions"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/reproducibility",
+              "guides/custom-collections",
+              "guides/pyserini-integration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Indexing API",
+            "pages": [
+              "api/indexing/index-collection",
+              "api/indexing/index-dense-vectors",
+              "api/indexing/index-reader-utils"
+            ]
+          },
+          {
+            "group": "Search API",
+            "pages": [
+              "api/search/search-collection",
+              "api/search/simple-searcher",
+              "api/search/dense-searcher"
+            ]
+          },
+          {
+            "group": "Encoders API",
+            "pages": [
+              "api/encoders/dense-encoder",
+              "api/encoders/sparse-encoder"
+            ]
+          },
+          {
+            "group": "Analysis API",
+            "pages": [
+              "api/analysis/analyzers",
+              "api/analysis/tokenizers"
+            ]
+          },
+          {
+            "group": "Evaluation API",
+            "pages": [
+              "api/evaluation/trec-eval",
+              "api/evaluation/qrels"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "BM25 and traditional lexical retrieval",
+    "Dense vector search with HNSW and flat indexes",
+    "Learned sparse retrieval (SPLADE, uniCOIL)",
+    "Neural encoders for dense and sparse representations",
+    "Prebuilt indexes for common IR test collections",
+    "End-to-end regression testing framework",
+    "Support for MS MARCO, BEIR, and TREC collections",
+    "Query reranking and relevance feedback",
+    "ONNX model integration",
+    "Reproducible research workflows"
+  ],
+  "publicApiSurface": [
+    "io.anserini.index.IndexCollection",
+    "io.anserini.index.IndexHnswDenseVectors",
+    "io.anserini.index.IndexFlatDenseVectors",
+    "io.anserini.search.SearchCollection",
+    "io.anserini.search.SimpleSearcher",
+    "io.anserini.search.SearchHnswDenseVectors",
+    "io.anserini.search.SearchFlatDenseVectors",
+    "io.anserini.encoder.dense.DenseEncoder",
+    "io.anserini.encoder.sparse.SparseEncoder",
+    "io.anserini.analysis.DefaultEnglishAnalyzer",
+    "io.anserini.rerank.RerankerCascade",
+    "io.anserini.eval.TrecEval"
+  ]
+}
