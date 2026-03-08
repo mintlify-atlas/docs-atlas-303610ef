@@ -1,0 +1,563 @@
+---
+title: Evaluation Concepts  
+description: Understanding relevance judgments, metrics, trec_eval, and regression testing in Anserini
+---
+
+## Why Evaluate?
+
+Evaluation answers critical questions:
+- Is this retrieval system any good?
+- Is system A better than system B?
+- Did my change improve or hurt performance?
+
+Without rigorous evaluation, you're flying blind.
+
+<Note>
+**Reproducibility** is a core principle in Anserini. Every result should be reproducible by others using the same data, code, and methodology.
+</Note>
+
+## Test Collections
+
+A complete **test collection** enables evaluation:
+
+1. **Documents** (corpus): The collection being searched
+2. **Queries** (topics): Information needs to test
+3. **Relevance judgments** (qrels): Ground truth labels
+
+### Standard Test Collections
+
+Anserini supports many standard collections:
+
+| Collection | Documents | Queries | Domain |
+|------------|-----------|---------|--------|
+| MS MARCO Passage | 8.8M | 6,980 dev | Web passages |
+| MS MARCO Doc | 3.2M | 5,193 dev | Web documents |
+| TREC Robust04 | 528K | 250 | News (1990s) |
+| TREC DL 2019 | 8.8M | 200 | Web passages |
+| TREC DL 2020 | 8.8M | 200 | Web passages |
+| BEIR | Various | Various | 18 diverse datasets |
+
+## Relevance Judgments (Qrels)
+
+**Relevance judgments** (qrels) are human-created labels indicating which documents are relevant to which queries.
+
+### Qrels Format
+
+Standard TREC format:
+
+```
+qid  iteration  docid    relevance
+1    0          doc123   1
+1    0          doc456   0  
+1    0          doc789   2
+2    0          doc234   1
+```
+
+Fields:
+- **qid**: Query identifier
+- **iteration**: Usually 0 (historical artifact)
+- **docid**: Document identifier  
+- **relevance**: Relevance grade
+
+### Binary vs Graded Relevance
+
+**Binary relevance** (MS MARCO):
+```
+0 = not relevant
+1 = relevant
+```
+
+Simple but coarse.
+
+**Graded relevance** (TREC Deep Learning):
+```
+0 = not relevant
+1 = somewhat relevant  
+2 = relevant
+3 = highly relevant
+```
+
+Captures degrees of relevance.
+
+### Sparse vs Dense Judgments
+
+**Sparse judgments** (MS MARCO):
+- ~1 relevant document per query
+- Fast to create, cheap to obtain
+- May miss some relevant documents
+
+**Dense judgments** (TREC):
+- Many judgments per query (often 100+)
+- Created through **pooling**: judge top-k from multiple systems  
+- More comprehensive but expensive
+
+<Info>
+MS MARCO passage dev set has 7,437 relevance judgments for 6,980 queries - averaging just over 1 judgment per query.
+</Info>
+
+## Evaluation Metrics
+
+Metrics quantify ranking quality by comparing retrieval results to qrels.
+
+### Mean Reciprocal Rank (MRR)
+
+**Reciprocal Rank** is the inverse of the rank of the first relevant document:
+
+```
+RR = 1 / rank_of_first_relevant
+
+Rank 1 → RR = 1.0
+Rank 2 → RR = 0.5
+Rank 3 → RR = 0.333  
+Rank 10 → RR = 0.1
+No relevant in top-k → RR = 0.0
+```
+
+**MRR** is the mean across all queries:
+
+```
+MRR = (1/|Q|) × Σ RR(q)
+```
+
+**MRR@k** only considers top-k documents:
+
+```bash
+# Evaluate with MS MARCO's official script
+python tools/scripts/msmarco/msmarco_passage_eval.py \
+  qrels.dev.small.tsv run.bm25.txt
+
+#####################
+MRR @10: 0.1874122777095555
+QueriesRanked: 6980
+#####################
+```
+
+**When to use MRR**:
+- Question answering (user wants one answer)
+- Known-item search (find a specific document)
+- When most queries have one relevant document
+
+### Precision
+
+**Precision@k** is the fraction of top-k documents that are relevant:
+
+```
+P@k = (# relevant in top-k) / k
+```
+
+Example: Top 10 results with 6 relevant documents:
+```
+P@10 = 6/10 = 0.6
+```
+
+**When to use Precision**:
+- User experience metrics (what fraction of displayed results are good?)
+- High-precision applications (users want few false positives)
+
+### Recall
+
+**Recall@k** is the fraction of all relevant documents found in top-k:
+
+```
+R@k = (# relevant in top-k) / (# total relevant)
+```
+
+Example: Query has 20 relevant documents, 12 appear in top 100:
+```
+R@100 = 12/20 = 0.6
+```
+
+**When to use Recall**:
+- Measuring coverage (did we find most relevant documents?)
+- First-stage retrieval (want to avoid missing relevant docs)
+- Reranking evaluation (given top-k from first stage, what fraction of relevance remains?)
+
+### Mean Average Precision (MAP)
+
+**Average Precision** considers all relevant documents and their ranks:
+
+```
+AP = (1/R) × Σ [P@k × rel(k)]
+```
+
+Where:
+- R = total number of relevant documents
+- P@k = precision at rank k
+- rel(k) = 1 if document at rank k is relevant, 0 otherwise
+
+Example:
+```
+Ranking: [R, NR, R, R, NR, R, NR, NR, NR, R]
+         ↑       ↑  ↑      ↑              ↑
+Relevant at: 1, 3, 4, 6, 10
+
+AP = (1/5) × [1/1 + 2/3 + 3/4 + 4/6 + 5/10]
+   = (1/5) × [1.0 + 0.667 + 0.75 + 0.667 + 0.5]  
+   = 0.717
+```
+
+**MAP** is the mean across queries:
+
+```
+MAP = (1/|Q|) × Σ AP(q)
+```
+
+**When to use MAP**:
+- Standard IR benchmark metric
+- Cares about rank of all relevant documents
+- Emphasizes retrieving many relevant documents early
+
+### Normalized Discounted Cumulative Gain (nDCG)
+
+**DCG** for graded relevance - highly relevant documents contribute more:
+
+```
+DCG@k = Σ (2^rel(i) - 1) / log₂(i + 1)
+```
+
+Where rel(i) is the relevance grade at rank i.
+
+**nDCG** normalizes by ideal DCG:
+
+```
+nDCG@k = DCG@k / IDCG@k
+```
+
+IDCG = DCG of perfect ranking (all relevant documents ranked by relevance grade)
+
+Example with graded relevance (0-3):
+```
+Ranking:     [3, 2, 0, 1, 2]
+Ideal:       [3, 2, 2, 1, 0]
+
+DCG@5 = (2³-1)/log₂(2) + (2²-1)/log₂(3) + ... = 11.67
+IDCG@5 = 13.40  
+nDCG@5 = 11.67 / 13.40 = 0.871
+```
+
+**When to use nDCG**:
+- Graded relevance judgments (TREC DL, BEIR)
+- Want to reward highly relevant documents appearing early
+- Standard metric in modern IR evaluations
+
+### Metric Summary
+
+| Metric | Relevance Type | What It Measures | Best For |
+|--------|----------------|------------------|----------|
+| MRR@k | Binary | First relevant document | QA, known-item |
+| P@k | Binary/Graded | Precision in top-k | User experience |
+| R@k | Binary | Coverage in top-k | Recall-oriented tasks |
+| MAP | Binary | Rank of all relevant | Classic IR |
+| nDCG@k | Graded | Graded ranking quality | Modern IR |
+
+## Using trec_eval
+
+**trec_eval** is the standard evaluation tool in IR research.
+
+### Installation
+
+Anserini bundles trec_eval:
+
+```bash
+bin/trec_eval -h
+```
+
+### Basic Usage
+
+```bash
+bin/trec_eval [options] qrels_file run_file
+```
+
+Example:
+```bash
+bin/trec_eval -c -m map -m recip_rank -m ndcg_cut.10 \
+  qrels.dev.small.trec run.bm25.trec
+
+map                   	all	0.1957
+recip_rank            	all	0.1874  
+ndcg_cut_10           	all	0.2246
+```
+
+Flags:
+- **-c**: Combine multiple judgments (useful for pooled judgments)
+- **-m [metric]**: Compute specific metric
+- **-q**: Show per-query scores (in addition to average)
+- **-M k**: Consider only top-k documents
+
+### Common Metrics
+
+```bash
+# MAP and recall
+bin/trec_eval -c -m map -m recall.1000 qrels run
+
+# MRR@10  
+bin/trec_eval -c -M 10 -m recip_rank qrels run
+
+# nDCG at various cutoffs
+bin/trec_eval -c -m ndcg_cut.5,10,20 qrels run
+
+# Precision at various cutoffs  
+bin/trec_eval -c -m P.5,10,20 qrels run
+
+# Everything
+bin/trec_eval -c -m all_trec qrels run
+```
+
+### Per-Query Evaluation
+
+```bash
+# Show scores for each query
+bin/trec_eval -q -c -m map qrels run
+
+map                   	1	0.2500
+map                   	2	0.3333
+map                   	3	0.1667  
+...
+map                   	all	0.2500  # Average
+```
+
+### Format Conversion
+
+trec_eval requires TREC format. Convert MS MARCO format:
+
+```bash
+# Convert run
+python tools/scripts/msmarco/convert_msmarco_to_trec_run.py \
+  --input run.msmarco.txt \
+  --output run.trec
+
+# Convert qrels  
+python tools/scripts/msmarco/convert_msmarco_to_trec_qrels.py \
+  --input qrels.dev.small.tsv \
+  --output qrels.dev.small.trec
+```
+
+## Regression Testing
+
+Anserini uses **regression testing** to ensure reproducibility.
+
+### What is Regression Testing?
+
+Regression tests verify that:
+1. Indexing produces expected index statistics
+2. Retrieval produces expected effectiveness scores
+3. Changes don't break existing functionality
+
+### Regression Framework
+
+Anserini's regressions are defined in YAML:
+
+```yaml
+# src/main/resources/regression/msmarco-passage.yaml
+corpus: msmarco-passage
+corpus_path: collections/msmarco-passage/
+
+index_cmds:
+  - command: target/appassembler/bin/IndexCollection
+    params:
+      - -collection JsonCollection
+      - -input collections/msmarco-passage/collection_jsonl
+      - -index indexes/lucene-index.msmarco-passage
+      - -generator DefaultLuceneDocumentGenerator
+      - -threads 9 -storePositions -storeDocvectors -storeRaw
+
+topics:
+  - name: dev
+    path: topics.msmarco-passage.dev-subset.txt
+    qrel: qrels.msmarco-passage.dev-subset.txt
+
+models:
+  - name: bm25-default
+    params:
+      - -bm25
+    results:
+      map: 0.1957
+      recip_rank: 0.1874
+```
+
+### Running Regressions
+
+```bash
+# Run complete regression (index, search, verify)
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-passage
+```
+
+Output:
+```
+## Indexing
+✓ Index statistics match expected values
+
+## Retrieval  
+✓ BM25 (default): MRR@10 = 0.1874 ✓
+✓ BM25 (tuned): MRR@10 = 0.1874 ✓
+
+## Summary
+✓ All tests passed
+```
+
+### Regression Components
+
+1. **Index verification**:
+   ```python
+   assert index.num_docs == 8841823
+   assert index.num_non_empty_docs == 8841823  
+   ```
+
+2. **Effectiveness verification**:
+   ```python
+   assert abs(results['MRR@10'] - 0.1874) < 0.0001
+   ```
+
+3. **Output verification**:
+   ```bash
+   # Check run file format and content
+   wc -l run.txt  # Should be 6980000
+   ```
+
+### Why Regression Testing?
+
+<Accordion title="Ensuring Reproducibility">
+
+Regression testing is critical for reproducible research:
+
+1. **Detect breaking changes**: Know immediately if code changes affect results
+2. **Documentation**: Regressions document exact commands and expected results  
+3. **Onboarding**: New users can verify their setup is correct
+4. **Continuous integration**: Automated testing on every commit
+5. **Publication**: Readers can reproduce paper results exactly
+
+Anserini maintains hundreds of regression tests covering:
+- Different collections (MS MARCO, TREC, BEIR, etc.)
+- Different models (BM25, QL, neural, etc.)  
+- Different settings (multilingual, noisy text, etc.)
+
+Every regression has been verified by multiple researchers and is tested in CI.
+
+</Accordion>
+
+## Evaluation Workflow
+
+Typical evaluation workflow in Anserini:
+
+### 1. Index the Collection
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input collections/msmarco-passage/collection_jsonl \
+  -index indexes/msmarco-passage \
+  -generator DefaultLuceneDocumentGenerator \
+  -threads 9 -storePositions -storeDocvectors -storeRaw
+```
+
+### 2. Run Retrieval
+
+```bash
+bin/run.sh io.anserini.search.SearchCollection \
+  -index indexes/msmarco-passage \
+  -topics topics.msmarco-passage.dev.txt \
+  -topicReader TsvInt \
+  -output runs/run.bm25.txt \
+  -format msmarco \
+  -bm25 -bm25.k1 0.82 -bm25.b 0.68 -hits 1000
+```
+
+### 3. Evaluate Results
+
+```bash
+# MS MARCO format
+python tools/scripts/msmarco/msmarco_passage_eval.py \
+  qrels.dev.small.tsv runs/run.bm25.txt
+
+# TREC format  
+bin/trec_eval -c -m map -m recip_rank -m ndcg_cut.10 \
+  qrels.dev.small.trec runs/run.bm25.trec
+```
+
+### 4. Compare Systems
+
+```bash
+# Run two systems
+bin/run.sh io.anserini.search.SearchCollection ... > run1.txt
+bin/run.sh io.anserini.search.SearchCollection ... > run2.txt
+
+# Evaluate both
+bin/trec_eval -q -c -m map qrels run1.trec > eval1.txt
+bin/trec_eval -q -c -m map qrels run2.trec > eval2.txt
+
+# Statistical significance testing
+python tools/scripts/compare_runs.py eval1.txt eval2.txt
+```
+
+## Statistical Significance
+
+When comparing systems, use statistical tests:
+
+### Paired t-test
+
+Compares per-query scores:
+
+```python
+from scipy import stats
+
+scores_system_a = [0.3, 0.5, 0.2, ...]  # per query
+scores_system_b = [0.35, 0.48, 0.25, ...]
+
+t_stat, p_value = stats.ttest_rel(scores_system_a, scores_system_b)
+
+if p_value < 0.05:
+    print("Difference is statistically significant")
+```
+
+### Randomization Test
+
+Non-parametric alternative to t-test:
+
+```bash
+python tools/scripts/msmarco/compare_runs.py \
+  --qrels qrels.dev.small.tsv \
+  --run1 run.system_a.txt \
+  --run2 run.system_b.txt
+```
+
+<Info>
+A difference is "statistically significant" if p < 0.05, meaning it's unlikely to occur by chance.
+</Info>
+
+## Best Practices
+
+<Accordion title="Evaluation Tips">
+
+1. **Always use held-out test data** - never tune on test set
+2. **Report multiple metrics** - MAP, nDCG, recall give different views
+3. **Use statistical significance tests** - small improvements may be noise
+4. **Run regression tests** before claiming reproducibility  
+5. **Document exact commands** - others should be able to reproduce exactly
+6. **Compare to strong baselines** - BM25 is hard to beat on many tasks
+7. **Consider multiple test collections** - generalization matters
+8. **Report per-query variance** - helps understand when systems differ
+
+</Accordion>
+
+## Common Pitfalls
+
+❌ **Tuning on test set**: Leads to overfitting and inflated scores
+
+❌ **Cherry-picking metrics**: Report the metric you intended to optimize
+
+❌ **Ignoring statistical significance**: Small differences may be noise
+
+❌ **Not documenting settings**: Others can't reproduce your results  
+
+❌ **Comparing different index settings**: Unfair comparison
+
+❌ **Using incomplete qrels**: May reward systems that retrieve unjudged docs
+
+## Next Steps
+
+Now that you understand evaluation:
+- Run the [MS MARCO regressions](https://github.com/castorini/anserini/blob/master/docs/experiments-msmarco-passage.md)
+- Explore other [TREC collections](https://github.com/castorini/anserini/blob/master/docs/regressions.md)  
+- Learn about [neural reranking](https://github.com/castorini/anserini/blob/master/docs/experiments-msmarco-passage-reranking.md)

@@ -1,0 +1,419 @@
+---
+title: Analyzers API
+description: Text analysis and tokenization for indexing and search
+---
+
+## Overview
+
+Anserini provides several Lucene `Analyzer` implementations for text processing during indexing and search. Analyzers control how text is tokenized, filtered, and normalized.
+
+## DefaultEnglishAnalyzer
+
+The primary analyzer for English text with configurable stemming and stopword filtering.
+
+### Package
+
+`io.anserini.analysis.DefaultEnglishAnalyzer`
+
+### Factory Methods
+
+The class uses static factory methods instead of public constructors.
+
+#### newDefaultInstance
+
+Creates an analyzer with Porter stemming and default stopwords.
+
+```java
+public static DefaultEnglishAnalyzer newDefaultInstance()
+```
+
+<ResponseField name="return" type="DefaultEnglishAnalyzer">
+  Analyzer with Porter stemming and Lucene's default English stopwords
+</ResponseField>
+
+#### newStemmingInstance
+
+Creates an analyzer with a specified stemmer.
+
+```java
+public static DefaultEnglishAnalyzer newStemmingInstance(String stemmer)
+```
+
+<ParamField path="stemmer" type="String" required>
+  Either "porter" (or "p") or "krovetz" (or "k")
+</ParamField>
+
+<ResponseField name="return" type="DefaultEnglishAnalyzer">
+  Analyzer with specified stemmer and default stopwords
+</ResponseField>
+
+#### newStemmingInstance (with stopwords)
+
+Creates an analyzer with a stemmer and custom stopwords.
+
+```java
+public static DefaultEnglishAnalyzer newStemmingInstance(
+    String stemmer,
+    CharArraySet stopwords
+)
+```
+
+<ParamField path="stemmer" type="String" required>
+  Either "porter" or "krovetz"
+</ParamField>
+
+<ParamField path="stopwords" type="CharArraySet" required>
+  Custom stopword list
+</ParamField>
+
+<ResponseField name="return" type="DefaultEnglishAnalyzer">
+  Analyzer with specified stemmer and custom stopwords
+</ResponseField>
+
+#### newNonStemmingInstance
+
+Creates an analyzer without stemming.
+
+```java
+public static DefaultEnglishAnalyzer newNonStemmingInstance()
+```
+
+<ResponseField name="return" type="DefaultEnglishAnalyzer">
+  Analyzer without stemming, with default stopwords
+</ResponseField>
+
+#### newNonStemmingInstance (with stopwords)
+
+Creates a non-stemming analyzer with custom stopwords.
+
+```java
+public static DefaultEnglishAnalyzer newNonStemmingInstance(
+    CharArraySet stopwords
+)
+```
+
+<ParamField path="stopwords" type="CharArraySet" required>
+  Custom stopword list
+</ParamField>
+
+<ResponseField name="return" type="DefaultEnglishAnalyzer">
+  Analyzer without stemming, with custom stopwords
+</ResponseField>
+
+#### fromArguments
+
+Creates an analyzer from command-line style arguments.
+
+```java
+public static DefaultEnglishAnalyzer fromArguments(
+    String stemmer,
+    boolean keepStopwords,
+    String stopwordsFile
+) throws IOException
+```
+
+<ParamField path="stemmer" type="String" required>
+  Either "porter" or "krovetz"
+</ParamField>
+
+<ParamField path="keepStopwords" type="boolean" required>
+  If true, disables stopword filtering (stopwordsFile must be null)
+</ParamField>
+
+<ParamField path="stopwordsFile" type="String">
+  Path to text file with one stopword per line, or null for defaults
+</ParamField>
+
+<ResponseField name="return" type="DefaultEnglishAnalyzer">
+  Configured analyzer
+</ResponseField>
+
+### Analysis Pipeline
+
+The analyzer applies the following filters in order:
+
+1. **StandardTokenizer** - Tokenizes text using Unicode rules
+2. **EnglishPossessiveFilter** - Removes possessive 's
+3. **LowerCaseFilter** - Converts to lowercase
+4. **StopFilter** - Removes stopwords
+5. **PorterStemFilter** or **KStemFilter** - Applies stemming (if enabled)
+
+### Usage Examples
+
+#### Basic Usage
+
+```java
+import io.anserini.analysis.DefaultEnglishAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+
+public class AnalyzerExample {
+    public static void main(String[] args) throws Exception {
+        // Create analyzer with default settings
+        Analyzer analyzer = DefaultEnglishAnalyzer.newDefaultInstance();
+        
+        String text = "The quick brown foxes are jumping over lazy dogs!";
+        
+        // Analyze text
+        try (TokenStream ts = analyzer.tokenStream("field", text)) {
+            CharTermAttribute termAttr = ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            
+            System.out.println("Tokens:");
+            while (ts.incrementToken()) {
+                System.out.println("  " + termAttr.toString());
+            }
+            ts.end();
+        }
+        
+        analyzer.close();
+    }
+}
+```
+
+**Output:**
+```
+Tokens:
+  quick
+  brown
+  fox      (stemmed from "foxes")
+  jump     (stemmed from "jumping")
+  lazi     (stemmed from "lazy")
+  dog      (stemmed from "dogs")
+```
+
+#### Using Krovetz Stemmer
+
+```java
+import io.anserini.analysis.DefaultEnglishAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+
+// Create analyzer with Krovetz stemmer
+Analyzer analyzer = DefaultEnglishAnalyzer.newStemmingInstance("krovetz");
+
+// Or use short form
+Analyzer analyzer2 = DefaultEnglishAnalyzer.newStemmingInstance("k");
+```
+
+#### Without Stemming
+
+```java
+import io.anserini.analysis.DefaultEnglishAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+
+// No stemming, default stopwords
+Analyzer analyzer = DefaultEnglishAnalyzer.newNonStemmingInstance();
+```
+
+#### Custom Stopwords
+
+```java
+import io.anserini.analysis.DefaultEnglishAnalyzer;
+import org.apache.lucene.analysis.CharArraySet;
+import java.util.Arrays;
+
+// Create custom stopword list
+CharArraySet customStopwords = new CharArraySet(
+    Arrays.asList("the", "a", "an", "is", "are"),
+    false  // ignoreCase
+);
+
+// Use with Porter stemmer
+Analyzer analyzer = DefaultEnglishAnalyzer.newStemmingInstance(
+    "porter",
+    customStopwords
+);
+```
+
+#### Loading Stopwords from File
+
+```java
+import io.anserini.analysis.DefaultEnglishAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+
+// Load stopwords from file
+Analyzer analyzer = DefaultEnglishAnalyzer.fromArguments(
+    "porter",           // stemmer
+    false,              // don't keep all words
+    "stopwords.txt"     // custom stopwords file
+);
+
+// Keep all words (no stopword filtering)
+Analyzer analyzer2 = DefaultEnglishAnalyzer.fromArguments(
+    "porter",           // stemmer
+    true,               // keep stopwords
+    null                // must be null when keepStopwords=true
+);
+```
+
+## TweetAnalyzer
+
+Specialized analyzer for Twitter/social media text.
+
+### Package
+
+`io.anserini.analysis.TweetAnalyzer`
+
+### Constructors
+
+```java
+public TweetAnalyzer()  // With stemming
+public TweetAnalyzer(boolean stemming)
+```
+
+<ParamField path="stemming" type="boolean">
+  Enable Porter stemming (default: true)
+</ParamField>
+
+### Features
+
+- Uses **WhitespaceTokenizer** for simple tokenization
+- **TweetLowerCaseEntityPreservingFilter** - Lowercases while preserving entities
+- Optional **PorterStemFilter**
+- Preserves hashtags, mentions, and URLs
+
+### Usage
+
+```java
+import io.anserini.analysis.TweetAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+
+public class TweetExample {
+    public static void main(String[] args) throws Exception {
+        Analyzer analyzer = new TweetAnalyzer(true);
+        
+        String tweet = "Check out @Anserini for #InformationRetrieval https://anserini.io";
+        
+        try (TokenStream ts = analyzer.tokenStream("text", tweet)) {
+            CharTermAttribute termAttr = ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            
+            while (ts.incrementToken()) {
+                System.out.println(termAttr.toString());
+            }
+            ts.end();
+        }
+        
+        analyzer.close();
+    }
+}
+```
+
+## HuggingFaceTokenizerAnalyzer
+
+Analyzer using HuggingFace tokenizers for transformer models.
+
+### Package
+
+`io.anserini.analysis.HuggingFaceTokenizerAnalyzer`
+
+### Constructor
+
+```java
+public HuggingFaceTokenizerAnalyzer(String huggingFaceModelId)
+    throws IOException
+```
+
+<ParamField path="huggingFaceModelId" type="String" required>
+  HuggingFace model ID (e.g., "bert-base-uncased") or local path
+</ParamField>
+
+### Features
+
+- Uses HuggingFace tokenizers (WordPiece, BPE, etc.)
+- Supports arbitrary sequence lengths
+- Special tokens not added automatically
+- Tokenizes using model's vocabulary
+
+### Usage
+
+```java
+import io.anserini.analysis.HuggingFaceTokenizerAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+
+public class HFTokenizerExample {
+    public static void main(String[] args) throws Exception {
+        // Use BERT tokenizer
+        Analyzer analyzer = new HuggingFaceTokenizerAnalyzer(
+            "bert-base-uncased"
+        );
+        
+        String text = "information retrieval";
+        // Tokens: ["information", "retrieval"]
+        
+        analyzer.close();
+    }
+}
+```
+
+## CompositeAnalyzer
+
+Uses different analyzers for different fields.
+
+### Package
+
+`io.anserini.analysis.CompositeAnalyzer`
+
+### Usage
+
+```java
+import io.anserini.analysis.CompositeAnalyzer;
+import io.anserini.analysis.DefaultEnglishAnalyzer;
+import io.anserini.analysis.TweetAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+import java.util.HashMap;
+import java.util.Map;
+
+// Create field-specific analyzers
+Map<String, Analyzer> fieldAnalyzers = new HashMap<>();
+fieldAnalyzers.put("body", DefaultEnglishAnalyzer.newDefaultInstance());
+fieldAnalyzers.put("tweet", new TweetAnalyzer());
+
+Analyzer compositeAnalyzer = new CompositeAnalyzer(
+    DefaultEnglishAnalyzer.newDefaultInstance(),  // default
+    fieldAnalyzers
+);
+```
+
+## Best Practices
+
+### Choosing a Stemmer
+
+- **Porter stemmer**: More aggressive, better recall
+- **Krovetz stemmer**: More conservative, better precision
+
+### Stopword Filtering
+
+- Enable for general search (default behavior)
+- Disable for phrase search or when stopwords are semantically important
+
+### Resource Cleanup
+
+```java
+// Always close analyzers
+try (Analyzer analyzer = DefaultEnglishAnalyzer.newDefaultInstance()) {
+    // Use analyzer
+}
+// Automatically closed
+```
+
+### Index and Query Consistency
+
+```java
+// Use the SAME analyzer for indexing and querying
+Analyzer analyzer = DefaultEnglishAnalyzer.newStemmingInstance("porter");
+
+// For indexing
+IndexWriterConfig config = new IndexWriterConfig(analyzer);
+
+// For querying
+QueryParser parser = new QueryParser("contents", analyzer);
+```
+
+## See Also
+
+- [Indexing API](/api/indexing) - Using analyzers for indexing
+- [Search API](/api/search) - Using analyzers for search

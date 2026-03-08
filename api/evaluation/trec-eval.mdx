@@ -1,0 +1,377 @@
+---
+title: TrecEval API
+description: Programmatic interface to TREC evaluation metrics
+---
+
+## Overview
+
+The `TrecEval` class provides a Java wrapper around the `trec_eval` binary for computing standard information retrieval evaluation metrics. It allows you to evaluate run files against qrels (relevance judgments) programmatically.
+
+## TrecEval
+
+### Package
+
+`io.anserini.eval.TrecEval`
+
+### Constructor
+
+```java
+public TrecEval()
+```
+
+Creates a new TrecEval instance with the appropriate platform-specific binary.
+
+### Supported Platforms
+
+- **Linux** (x86_64, aarch64)
+- **macOS** (x86_64, aarch64)
+- **Windows**
+
+The binary is automatically extracted and cached in a temporary directory.
+
+### Methods
+
+#### runAndGetOutput
+
+Executes `trec_eval` and returns the output as a structured array.
+
+```java
+public String[][] runAndGetOutput(String[] args)
+```
+
+<ParamField path="args" type="String[]" required>
+  Command-line arguments for trec_eval (e.g., metrics, qrels file, run file)
+</ParamField>
+
+<ResponseField name="return" type="String[][]">
+  Array where each row contains: [metric, qid, value]
+  - `metric`: Metric name (e.g., "map", "ndcg")
+  - `qid`: Query ID or "all" for aggregate metrics
+  - `value`: Metric value as string
+</ResponseField>
+
+#### run
+
+Executes `trec_eval` and displays output to stdout.
+
+```java
+public int run(String[] args)
+```
+
+<ParamField path="args" type="String[]" required>
+  Command-line arguments for trec_eval
+</ParamField>
+
+<ResponseField name="return" type="int">
+  Exit code (0 for success, non-zero for error)
+</ResponseField>
+
+#### getLastExitCode
+
+Returns the exit code from the last execution.
+
+```java
+public int getLastExitCode()
+```
+
+<ResponseField name="return" type="int">
+  Exit code from last run (Integer.MAX_VALUE if not yet run)
+</ResponseField>
+
+## Usage Examples
+
+### Basic Evaluation
+
+```java
+import io.anserini.eval.TrecEval;
+
+public class EvaluationExample {
+    public static void main(String[] args) {
+        TrecEval evaluator = new TrecEval();
+        
+        // Run evaluation and print to stdout
+        int exitCode = evaluator.run(new String[] {
+            "qrels.txt",
+            "run.txt"
+        });
+        
+        if (exitCode == 0) {
+            System.out.println("Evaluation completed successfully");
+        } else {
+            System.err.println("Evaluation failed with code: " + exitCode);
+        }
+    }
+}
+```
+
+### Capturing Structured Output
+
+```java
+import io.anserini.eval.TrecEval;
+
+public class CaptureMetricsExample {
+    public static void main(String[] args) {
+        TrecEval evaluator = new TrecEval();
+        
+        // Get structured output
+        String[][] results = evaluator.runAndGetOutput(new String[] {
+            "-m", "map",
+            "-m", "ndcg",
+            "-m", "P.10",
+            "qrels.txt",
+            "run.txt"
+        });
+        
+        // Process results
+        for (String[] row : results) {
+            String metric = row[0];
+            String qid = row[1];
+            String value = row[2];
+            
+            System.out.printf("%s\t%s\t%s%n", metric, qid, value);
+        }
+    }
+}
+```
+
+### Extracting Specific Metrics
+
+```java
+import io.anserini.eval.TrecEval;
+import java.util.HashMap;
+import java.util.Map;
+
+public class ExtractMetricsExample {
+    public static void main(String[] args) {
+        TrecEval evaluator = new TrecEval();
+        
+        String[][] results = evaluator.runAndGetOutput(new String[] {
+            "-m", "map",
+            "-m", "ndcg",
+            "-m", "recip_rank",
+            "qrels.txt",
+            "run.txt"
+        });
+        
+        // Extract aggregate metrics (qid = "all")
+        Map<String, Double> metrics = new HashMap<>();
+        for (String[] row : results) {
+            String metric = row[0];
+            String qid = row[1];
+            String value = row[2];
+            
+            if ("all".equals(qid)) {
+                metrics.put(metric, Double.parseDouble(value));
+            }
+        }
+        
+        // Print summary
+        System.out.println("Evaluation Results:");
+        System.out.printf("  MAP:  %.4f%n", metrics.get("map"));
+        System.out.printf("  nDCG: %.4f%n", metrics.get("ndcg"));
+        System.out.printf("  MRR:  %.4f%n", metrics.get("recip_rank"));
+    }
+}
+```
+
+### Per-Query Metrics
+
+```java
+import io.anserini.eval.TrecEval;
+import java.util.HashMap;
+import java.util.Map;
+
+public class PerQueryMetricsExample {
+    public static void main(String[] args) {
+        TrecEval evaluator = new TrecEval();
+        
+        String[][] results = evaluator.runAndGetOutput(new String[] {
+            "-q",  // Per-query metrics
+            "-m", "map",
+            "qrels.txt",
+            "run.txt"
+        });
+        
+        // Organize by query
+        Map<String, Double> perQueryMAP = new HashMap<>();
+        for (String[] row : results) {
+            String metric = row[0];
+            String qid = row[1];
+            String value = row[2];
+            
+            if ("map".equals(metric) && !"all".equals(qid)) {
+                perQueryMAP.put(qid, Double.parseDouble(value));
+            }
+        }
+        
+        // Print per-query results
+        System.out.println("Per-Query MAP:");
+        perQueryMAP.forEach((qid, map) -> 
+            System.out.printf("  Query %s: %.4f%n", qid, map));
+    }
+}
+```
+
+### Using Qrels Symbols
+
+```java
+import io.anserini.eval.TrecEval;
+
+public class QrelsSymbolExample {
+    public static void main(String[] args) {
+        TrecEval evaluator = new TrecEval();
+        
+        // Use qrels symbol (automatically resolved)
+        String[][] results = evaluator.runAndGetOutput(new String[] {
+            "-m", "map",
+            "msmarco-passage.dev",  // Symbol, not file path
+            "run.txt"
+        });
+        
+        // Process results...
+    }
+}
+```
+
+The evaluator automatically expands qrels symbols to their full paths using the `RelevanceJudgments` API.
+
+### Common Metrics
+
+```java
+import io.anserini.eval.TrecEval;
+
+public class CommonMetricsExample {
+    public static void main(String[] args) {
+        TrecEval evaluator = new TrecEval();
+        
+        String[][] results = evaluator.runAndGetOutput(new String[] {
+            // Standard TREC metrics
+            "-m", "map",                  // Mean Average Precision
+            "-m", "ndcg",                 // Normalized Discounted Cumulative Gain
+            "-m", "ndcg_cut.10",          // nDCG@10
+            "-m", "recip_rank",           // Reciprocal Rank (MRR)
+            "-m", "recall.100",           // Recall@100
+            "-m", "recall.1000",          // Recall@1000
+            "-m", "P.10",                 // Precision@10
+            "-m", "P.20",                 // Precision@20
+            
+            "qrels.txt",
+            "run.txt"
+        });
+        
+        // Process results...
+    }
+}
+```
+
+### Error Handling
+
+```java
+import io.anserini.eval.TrecEval;
+
+public class ErrorHandlingExample {
+    public static void main(String[] args) {
+        TrecEval evaluator = new TrecEval();
+        
+        try {
+            String[][] results = evaluator.runAndGetOutput(new String[] {
+                "-m", "map",
+                "qrels.txt",
+                "run.txt"
+            });
+            
+            // Process results
+            System.out.println("Evaluation successful");
+            
+        } catch (RuntimeException e) {
+            // Thrown if trec_eval exits with non-zero code
+            System.err.println("Evaluation failed: " + e.getMessage());
+            int exitCode = evaluator.getLastExitCode();
+            System.err.println("Exit code: " + exitCode);
+        }
+    }
+}
+```
+
+### Advanced Options
+
+```java
+import io.anserini.eval.TrecEval;
+
+public class AdvancedOptionsExample {
+    public static void main(String[] args) {
+        TrecEval evaluator = new TrecEval();
+        
+        String[][] results = evaluator.runAndGetOutput(new String[] {
+            "-c",                         // Average over complete set of queries
+            "-q",                         // Print per-query results
+            "-l", "2",                    // Relevance level threshold
+            "-m", "ndcg_cut.10,20,100",   // Multiple cutoffs
+            "qrels.txt",
+            "run.txt"
+        });
+        
+        // Process results...
+    }
+}
+```
+
+## TREC Eval Arguments
+
+Common `trec_eval` arguments:
+
+<ParamField path="-m" type="string">
+  Specify metric(s) to compute (can be repeated)
+</ParamField>
+
+<ParamField path="-q" type="flag">
+  Print per-query results in addition to averages
+</ParamField>
+
+<ParamField path="-c" type="flag">
+  Average over complete set of queries (include zero scores)
+</ParamField>
+
+<ParamField path="-l" type="int">
+  Relevance level threshold (default: 1)
+</ParamField>
+
+<ParamField path="-M" type="int">
+  Maximum number of documents per query to evaluate
+</ParamField>
+
+## Main Method
+
+The class can also be run as a standalone program:
+
+```bash
+java io.anserini.eval.TrecEval -m map qrels.txt run.txt
+```
+
+```java
+public static void main(String[] args)
+```
+
+## Binary Management
+
+The `trec_eval` binary is:
+
+1. Detected based on OS and architecture
+2. Extracted from resources to a temporary directory
+3. Made executable (Unix-like systems)
+4. Deleted on JVM exit
+
+## Exception Handling
+
+<ResponseField name="RuntimeException" type="Exception">
+  Thrown when `trec_eval` exits with non-zero code
+</ResponseField>
+
+<ResponseField name="UnsupportedOperationException" type="Exception">
+  Thrown when the OS/architecture is not supported
+</ResponseField>
+
+## See Also
+
+- [Qrels API](/api/evaluation/qrels) - Managing relevance judgments
+- [Search API](/api/search) - Generating run files

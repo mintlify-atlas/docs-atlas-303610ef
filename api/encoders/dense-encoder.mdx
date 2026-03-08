@@ -1,0 +1,286 @@
+---
+title: DenseEncoder API
+description: Dense vector encoders for neural retrieval
+---
+
+## Overview
+
+The `DenseEncoder` abstract class provides an interface for encoding text into dense vector representations using ONNX-based neural models. Dense encoders are used for semantic search and neural retrieval applications.
+
+## Class Hierarchy
+
+```
+OnnxEncoder<float[]>
+  └── DenseEncoder
+        ├── BgeBaseEn15Encoder
+        ├── BgeLargeEn15Encoder
+        ├── ArcticEmbedLEncoder
+        └── CosDprDistilEncoder
+```
+
+## DenseEncoder
+
+### Package
+
+`io.anserini.encoder.dense.DenseEncoder`
+
+### Constructor
+
+```java
+public DenseEncoder(
+    String modelName,
+    String modelURL,
+    String vocabName,
+    String vocabURL,
+    String configURL
+) throws IOException, OrtException, URISyntaxException
+```
+
+<ParamField path="modelName" type="String" required>
+  Name of the ONNX model file to cache locally
+</ParamField>
+
+<ParamField path="modelURL" type="String" required>
+  URL to download the ONNX model from (typically HuggingFace)
+</ParamField>
+
+<ParamField path="vocabName" type="String" required>
+  Name of the vocabulary file to cache locally
+</ParamField>
+
+<ParamField path="vocabURL" type="String" required>
+  URL to download the vocabulary file from
+</ParamField>
+
+<ParamField path="configURL" type="String" required>
+  URL to download the model configuration file from
+</ParamField>
+
+### Methods
+
+#### encode
+
+Encodes a text query into a dense vector representation.
+
+```java
+public abstract float[] encode(String query) throws OrtException
+```
+
+<ParamField path="query" type="String" required>
+  The text to encode
+</ParamField>
+
+<ResponseField name="return" type="float[]">
+  Dense vector representation of the input text
+</ResponseField>
+
+#### normalize
+
+Normalizes a vector to unit length (L2 normalization).
+
+```java
+public static float[] normalize(float[] vector)
+```
+
+<ParamField path="vector" type="float[]" required>
+  The vector to normalize
+</ParamField>
+
+<ResponseField name="return" type="float[]">
+  Normalized vector with L2 norm = 1
+</ResponseField>
+
+## Available Implementations
+
+### BgeBaseEn15Encoder
+
+BAAI's BGE-base-en-v1.5 encoder for English text.
+
+```java
+import io.anserini.encoder.dense.BgeBaseEn15Encoder;
+import ai.onnxruntime.OrtException;
+import java.io.IOException;
+import java.net.URISyntaxException;
+
+public class BgeExample {
+    public static void main(String[] args) 
+            throws IOException, OrtException, URISyntaxException {
+        // Initialize encoder
+        BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder();
+        
+        // Encode a query
+        String query = "What is information retrieval?";
+        float[] embedding = encoder.encode(query);
+        
+        System.out.println("Embedding dimension: " + embedding.length);
+        System.out.println("First 5 values: ");
+        for (int i = 0; i < 5; i++) {
+            System.out.printf("  %.4f%n", embedding[i]);
+        }
+        
+        // Clean up resources
+        encoder.close();
+    }
+}
+```
+
+**Features:**
+- Model: BGE-base-en-v1.5 (BAAI)
+- Embedding dimension: 768
+- Max sequence length: 512 tokens
+- Automatic L2 normalization
+- Query instruction prepending
+
+### BgeLargeEn15Encoder
+
+BAAI's BGE-large-en-v1.5 encoder for higher quality embeddings.
+
+```java
+import io.anserini.encoder.dense.BgeLargeEn15Encoder;
+
+// Initialize larger model
+BgeLargeEn15Encoder encoder = new BgeLargeEn15Encoder();
+float[] embedding = encoder.encode("information retrieval");
+// Embedding dimension: 1024
+```
+
+### ArcticEmbedLEncoder
+
+Snowflake's Arctic-embed-l encoder.
+
+```java
+import io.anserini.encoder.dense.ArcticEmbedLEncoder;
+
+ArcticEmbedLEncoder encoder = new ArcticEmbedLEncoder();
+float[] embedding = encoder.encode("dense retrieval");
+```
+
+### CosDprDistilEncoder
+
+Distilled DPR encoder for efficient dense retrieval.
+
+```java
+import io.anserini.encoder.dense.CosDprDistilEncoder;
+
+CosDprDistilEncoder encoder = new CosDprDistilEncoder();
+float[] embedding = encoder.encode("neural search");
+```
+
+## Usage Patterns
+
+### Basic Encoding
+
+```java
+import io.anserini.encoder.dense.BgeBaseEn15Encoder;
+
+try (BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder()) {
+    float[] queryEmbedding = encoder.encode("search query");
+    float[] docEmbedding = encoder.encode("document text");
+    
+    // Compute similarity (dot product for normalized vectors)
+    float similarity = 0.0f;
+    for (int i = 0; i < queryEmbedding.length; i++) {
+        similarity += queryEmbedding[i] * docEmbedding[i];
+    }
+    System.out.println("Similarity: " + similarity);
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+### Batch Processing
+
+```java
+import io.anserini.encoder.dense.BgeBaseEn15Encoder;
+import java.util.ArrayList;
+import java.util.List;
+
+try (BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder()) {
+    List<String> documents = List.of(
+        "First document",
+        "Second document",
+        "Third document"
+    );
+    
+    List<float[]> embeddings = new ArrayList<>();
+    for (String doc : documents) {
+        embeddings.add(encoder.encode(doc));
+    }
+    
+    System.out.println("Encoded " + embeddings.size() + " documents");
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+### Custom Normalization
+
+```java
+import io.anserini.encoder.dense.DenseEncoder;
+import io.anserini.encoder.dense.BgeBaseEn15Encoder;
+
+try (BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder()) {
+    float[] raw = encoder.encode("text to encode");
+    
+    // Vectors are already normalized, but you can re-normalize if needed
+    float[] normalized = DenseEncoder.normalize(raw);
+    
+    // Verify L2 norm
+    float norm = 0.0f;
+    for (float v : normalized) {
+        norm += v * v;
+    }
+    System.out.println("L2 norm: " + Math.sqrt(norm)); // Should be ~1.0
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+## Model Caching
+
+All dense encoders automatically cache models and vocabularies in:
+
+```
+~/.cache/pyserini/encoders/
+```
+
+Models are downloaded once on first use and reused in subsequent runs.
+
+## Resource Management
+
+Dense encoders implement `AutoCloseable` for proper resource cleanup:
+
+```java
+// Using try-with-resources (recommended)
+try (BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder()) {
+    float[] embedding = encoder.encode("query");
+    // encoder.close() called automatically
+}
+
+// Manual cleanup
+BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder();
+try {
+    float[] embedding = encoder.encode("query");
+} finally {
+    encoder.close();
+}
+```
+
+## Exceptions
+
+<ResponseField name="IOException" type="Exception">
+  Thrown when model or vocabulary files cannot be downloaded or read
+</ResponseField>
+
+<ResponseField name="OrtException" type="Exception">
+  Thrown when ONNX runtime encounters errors during inference
+</ResponseField>
+
+<ResponseField name="URISyntaxException" type="Exception">
+  Thrown when model URLs are malformed
+</ResponseField>
+
+## See Also
+
+- [SparseEncoder API](/api/encoders/sparse-encoder) - Sparse vector encoders
+- [Search API](/api/search) - Using encoders for search

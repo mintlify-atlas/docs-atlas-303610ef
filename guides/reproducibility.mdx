@@ -1,0 +1,147 @@
+---
+title: Reproducibility in Anserini
+description: Understanding Anserini's commitment to reproducible information retrieval research
+---
+
+## The Anserini Reproducibility Promise
+
+Anserini is built on a foundation of **reproducibility** as its highest priority. This commitment ensures that anyone with the document collection can reproduce exactly the effectiveness scores reported in the regression documentation pages.
+
+<Note>
+**Reproducibility vs. Replicability**: Following ACM's [Artifact Review and Badging](https://www.acm.org/publications/policies/artifact-review-and-badging-current) Policy:
+
+- **Repeatability** = same team, same experimental setup
+- **Reproducibility** = different team, same experimental setup
+- **Replicability** = different team, different experimental setup
+
+In Anserini's context, if you can run the code and get the same results, you have successfully *reproduced* the results.
+</Note>
+
+## Why Reproducibility Matters
+
+Anserini grew out of [a reproducibility study of various open-source retrieval engines in 2016](https://link.springer.com/chapter/10.1007/978-3-319-30671-1_30) (Lin et al., ECIR 2016). The project aims to bridge the gap between academic information retrieval research and the practice of building real-world search applications.
+
+The toolkit provides:
+
+- **Rigorous regression testing**: End-to-end regression framework driven by automated scripts
+- **Verified index statistics**: Sanity checks ensuring proper index construction
+- **Standardized evaluation**: Automated retrieval runs with standard settings and verified effectiveness results
+- **Auto-generated documentation**: Regression pages generated from templates to ensure consistency
+
+## The Beverage Promise
+
+The Anserini team holds reproducibility in such high esteem that there's a unique guarantee:
+
+<Tip>
+**If you discover a broken regression before the team does, Jimmy Lin will buy you a beverage of choice (coffee, beer, etc.) at the next event you see him (e.g., SIGIR, TREC, etc.).**
+</Tip>
+
+This promise reflects the project's dedication to ensuring that all regression experiments are reproducible *all the time*.
+
+## How to Reproduce Results
+
+### Running Regressions
+
+Anserini's regression experiments are hooked into a rigorous end-to-end framework driven by the `run_regression.py` script. The script automatically:
+
+1. Builds the index from scratch
+2. Verifies index statistics (sanity check)
+3. Performs retrieval runs with standard settings
+4. Evaluates runs and verifies effectiveness results
+
+**Basic usage:**
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression <regression-name>
+```
+
+**Example - MS MARCO V1 Passage:**
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage
+```
+
+### Configuration Files
+
+Regression configurations are stored in `src/main/resources/regression/`. Each YAML file defines:
+
+- Collection paths and formats
+- Indexing parameters
+- Search configurations
+- Expected effectiveness metrics
+
+### Verification Process
+
+The regression script performs multiple verification steps:
+
+<Card title="Index Verification" icon="database">
+Checks document counts, term statistics, and other index properties match expected values
+</Card>
+
+<Card title="Effectiveness Verification" icon="chart-line">
+Compares retrieval metrics (MAP, nDCG, Recall, etc.) against known-good reference values
+</Card>
+
+## Contributing Reproduction Confirmations
+
+Successfully reproduced results? The community wants to know!
+
+### How to Contribute
+
+1. **Complete a reproduction**: Run a regression and verify you get matching results
+
+2. **Send a pull request**: Add your confirmation to the "Reproduction Log" at the bottom of the relevant regression page
+
+3. **Important**: Since regression documentation is auto-generated, pull requests should be sent against the [raw templates](https://github.com/castorini/anserini/tree/master/src/main/resources/docgen/templates)
+
+4. **Format your entry**: Follow the existing format:
+   ```
+   + Results reproduced by [@username](https://github.com/username) on YYYY-MM-DD (commit [`1234567`](link-to-commit))
+   ```
+
+5. **Include details**: In your PR description, provide:
+   - Operating system and environment
+   - Any issues encountered
+   - Suggestions for documentation improvements
+
+### Recognition
+
+By contributing reproduction confirmations, you'll be:
+
+- Recognized as an [Anserini contributor](https://github.com/castorini/anserini/graphs/contributors)
+- Helping validate the reproducibility of information retrieval research
+- Building your track record in the research community
+
+## Continuous Regression Testing
+
+Internally at the University of Waterloo, the team continuously runs regression tests to ensure that new commits don't break existing experimental runs. A detailed [change log](https://github.com/castorini/anserini/blob/master/docs/regressions-log.md) documents all substantive changes.
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Regression Experiments" icon="flask" href="https://github.com/castorini/anserini/blob/master/docs/regressions.md">
+    Complete list of available regression tests
+  </Card>
+  
+  <Card title="Regression Log" icon="list" href="https://github.com/castorini/anserini/blob/master/docs/regressions-log.md">
+    Detailed change log for regression updates
+  </Card>
+  
+  <Card title="Run Regression Script" icon="code" href="https://github.com/castorini/anserini/blob/master/src/main/python/run_regression.py">
+    Main regression automation script
+  </Card>
+  
+  <Card title="ACM Badging Policy" icon="badge-check" href="https://www.acm.org/publications/policies/artifact-review-and-badging-current">
+    Official definitions of reproducibility terms
+  </Card>
+</CardGroup>
+
+## Related Papers
+
+- Lin et al. ["Reproducibility in Information Retrieval"](https://link.springer.com/chapter/10.1007/978-3-319-30671-1_30), ECIR 2016
+- Yang et al. ["Anserini: Enabling the Use of Lucene for Information Retrieval Research"](https://dl.acm.org/doi/10.1145/3077136.3080721), SIGIR 2017
+- Yang et al. ["Anserini: Reproducible Ranking Baselines Using Lucene"](https://dl.acm.org/doi/10.1145/3239571), JDIQ 2018

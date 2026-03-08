@@ -1,0 +1,272 @@
+---
+title: IndexCollection Command
+description: Index document collections with Anserini using the IndexCollection command
+---
+
+The `IndexCollection` command is the primary tool for building Lucene inverted indexes from document collections. It supports various collection formats, analyzers, and indexing configurations.
+
+## Basic Usage
+
+The minimal command requires three parameters:
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection [CollectionClass] \
+  -input [path/to/collection] \
+  -index [path/to/index]
+```
+
+## Core Parameters
+
+<ParamField path="collection" type="string" required>
+  Collection class name from `io.anserini.collection` package (e.g., `JsonCollection`, `TrecCollection`)
+</ParamField>
+
+<ParamField path="input" type="string" required>
+  Path to the input document collection
+</ParamField>
+
+<ParamField path="index" type="string" required>
+  Output path for the generated Lucene index
+</ParamField>
+
+<ParamField path="threads" type="int" default="4">
+  Number of indexing threads for parallel processing
+</ParamField>
+
+<ParamField path="memoryBuffer" type="int" default="4096">
+  RAM buffer size in MB for indexing
+</ParamField>
+
+## Document Generator
+
+<ParamField path="generator" type="string" default="DefaultLuceneDocumentGenerator">
+  Document generator class from `io.anserini.index.generator` package. Controls how source documents are converted to Lucene documents.
+</ParamField>
+
+Available generators:
+- `DefaultLuceneDocumentGenerator` - Standard document generator
+- `TweetGenerator` - For Twitter collections
+- Custom generators in the `io.anserini.index.generator` package
+
+## Index Storage Options
+
+Control what information is stored in the index:
+
+<ParamField path="storePositions" type="boolean" default="false">
+  Store term positions in the index (required for phrase queries)
+</ParamField>
+
+<ParamField path="storeDocvectors" type="boolean" default="false">
+  Store document vectors (required for pseudo-relevance feedback and query expansion)
+</ParamField>
+
+<ParamField path="storeContents" type="boolean" default="false">
+  Store the processed document contents field
+</ParamField>
+
+<ParamField path="storeRaw" type="boolean" default="false">
+  Store the raw source document
+</ParamField>
+
+## Text Analysis Options
+
+### Language and Stemming
+
+<ParamField path="language" type="string" default="en">
+  Analyzer language using ISO 3166 two-letter code (e.g., `en`, `zh`, `ar`)
+</ParamField>
+
+<ParamField path="stemmer" type="string" default="porter">
+  Stemming algorithm: `porter`, `krovetz`, or `none`
+</ParamField>
+
+<ParamField path="keepStopwords" type="boolean" default="false">
+  Retain stopwords instead of removing them
+</ParamField>
+
+<ParamField path="stopwords" type="string">
+  Path to custom stopwords file (one word per line)
+</ParamField>
+
+### Advanced Analysis
+
+<ParamField path="pretokenized" type="boolean" default="false">
+  Index pre-tokenized collections without additional stemming or stopword processing
+</ParamField>
+
+<ParamField path="analyzeWithHuggingFaceTokenizer" type="string">
+  Tokenize text using a pretrained HuggingFace tokenizer (specify model name)
+</ParamField>
+
+<ParamField path="useCompositeAnalyzer" type="boolean" default="false">
+  Use both a Lucene analyzer and HuggingFace tokenizer together
+</ParamField>
+
+## Similarity Functions
+
+<ParamField path="bm25.accurate" type="boolean" default="false">
+  Use AccurateBM25Similarity which computes accurate document lengths (must be set at index time)
+</ParamField>
+
+<ParamField path="impact" type="boolean" default="false">
+  Store impact scores without norms (for learned sparse retrieval models)
+</ParamField>
+
+## Additional Fields
+
+<ParamField path="fields" type="string[]">
+  Space-separated list of additional fields to index beyond the default `contents` field
+</ParamField>
+
+## Optimization Options
+
+<ParamField path="optimize" type="boolean" default="false">
+  Merge all index segments into a single segment after indexing (slower indexing, faster retrieval)
+</ParamField>
+
+<ParamField path="uniqueDocid" type="boolean" default="false">
+  Remove duplicate documents with the same docid during indexing
+</ParamField>
+
+<ParamField path="whitelist" type="string">
+  Path to file containing docids to index (one per line); only these documents will be indexed
+</ParamField>
+
+## Complete Examples
+
+<CodeGroup>
+
+```bash MS MARCO Passage
+# Index MS MARCO passage collection with docvectors
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input collections/msmarco-passage/collection_jsonl \
+  -index indexes/msmarco-passage \
+  -generator DefaultLuceneDocumentGenerator \
+  -threads 9 \
+  -storePositions \
+  -storeDocvectors \
+  -storeRaw
+```
+
+```bash TREC Disk Collection
+# Index TREC disks 4-5 for Robust04
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection TrecCollection \
+  -input collections/robust04 \
+  -index indexes/robust04 \
+  -generator DefaultLuceneDocumentGenerator \
+  -threads 16 \
+  -storePositions \
+  -storeDocvectors \
+  -storeRaw
+```
+
+```bash Custom Analyzer
+# Index with Krovetz stemmer and custom stopwords
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input collections/mydata \
+  -index indexes/mydata \
+  -threads 8 \
+  -stemmer krovetz \
+  -stopwords data/stopwords.txt \
+  -storePositions
+```
+
+```bash Multilingual
+# Index Chinese collection
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection CleanTrecCollection \
+  -input collections/clef06-zh \
+  -index indexes/clef06-zh \
+  -language zh \
+  -threads 8
+```
+
+```bash Optimized Index
+# Create single-segment optimized index
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input collections/mydata \
+  -index indexes/mydata-optimized \
+  -threads 16 \
+  -storePositions \
+  -storeDocvectors \
+  -optimize
+```
+
+</CodeGroup>
+
+## Twitter-Specific Options
+
+When indexing Twitter collections, additional options are available:
+
+<ParamField path="tweet.keepRetweets" type="boolean" default="false">
+  Index retweets (by default they are skipped)
+</ParamField>
+
+<ParamField path="tweet.keepUrls" type="boolean" default="false">
+  Keep URLs in tweets
+</ParamField>
+
+<ParamField path="tweet.stemming" type="boolean" default="false">
+  Apply Porter stemming to tweets
+</ParamField>
+
+<ParamField path="tweet.maxId" type="long">
+  Maximum tweet ID to index; tweets with larger IDs are skipped
+</ParamField>
+
+<ParamField path="tweet.deletedIdsFile" type="string">
+  File containing deleted tweet IDs (one per line) to skip during indexing
+</ParamField>
+
+## Index Sharding
+
+For very large collections, you can create sharded indexes:
+
+<ParamField path="shard.count" type="int">
+  Total number of shards to partition the collection into
+</ParamField>
+
+<ParamField path="shard.current" type="int">
+  Current shard number to generate (indexed from 0)
+</ParamField>
+
+Example:
+```bash
+# Create shard 0 of 4
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input collections/large-corpus \
+  -index indexes/large-corpus-shard0 \
+  -threads 16 \
+  -shard.count 4 \
+  -shard.current 0
+```
+
+## Logging Control
+
+<ParamField path="verbose" type="boolean" default="false">
+  Enable verbose logging for each indexing thread
+</ParamField>
+
+<ParamField path="quiet" type="boolean" default="false">
+  Disable all logging except errors
+</ParamField>
+
+## Getting Help
+
+To see all available options:
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection -options
+```
+
+## See Also
+
+- [Index Options](/indexing/index-options) - Detailed configuration options
+- [Prebuilt Indexes](/indexing/prebuilt-indexes) - Using pre-built indexes
+- [Dense Vector Indexing](/indexing/dense-vectors) - Indexing dense vectors with HNSW

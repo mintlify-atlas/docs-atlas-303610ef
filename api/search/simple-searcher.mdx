@@ -1,0 +1,706 @@
+---
+title: 'SimpleSearcher API'
+description: 'High-level search API designed for interactive use and Python integration via Pyserini'
+---
+
+## Overview
+
+`SimpleSearcher` provides a simple, easy-to-use interface for searching Lucene indexes. It's specifically designed for interactive use and to provide a bridge between Java and Python via pyjnius (used by Pyserini).
+
+**Package**: `io.anserini.search`
+
+**Source**: `src/main/java/io/anserini/search/SimpleSearcher.java`
+
+## Constructors
+
+### SimpleSearcher(String indexDir)
+
+```java
+public SimpleSearcher(String indexDir) throws IOException
+```
+
+Creates a SimpleSearcher with the default analyzer.
+
+<ParamField path="indexDir" type="String" required>
+  Path to the Lucene index directory
+</ParamField>
+
+### SimpleSearcher(String indexDir, Analyzer analyzer)
+
+```java
+public SimpleSearcher(String indexDir, Analyzer analyzer) throws IOException
+```
+
+Creates a SimpleSearcher with a specified analyzer.
+
+<ParamField path="indexDir" type="String" required>
+  Path to the Lucene index directory
+</ParamField>
+
+<ParamField path="analyzer" type="Analyzer" required>
+  Lucene analyzer to use for query processing
+</ParamField>
+
+## Configuration Methods
+
+### Scoring Functions
+
+#### set_bm25(float k1, float b)
+
+```java
+public void set_bm25(float k1, float b)
+```
+
+Configures BM25 as the scoring function.
+
+<ParamField path="k1" type="float" required>
+  BM25 k1 parameter (term saturation). Typical values: 0.6-1.2. Default: 0.9
+</ParamField>
+
+<ParamField path="b" type="float" required>
+  BM25 b parameter (length normalization). Typical values: 0.3-0.75. Default: 0.4
+</ParamField>
+
+**Example**:
+```java
+searcher.set_bm25(0.82f, 0.68f);
+```
+
+#### set_qld(float mu)
+
+```java
+public void set_qld(float mu)
+```
+
+Configures Query Likelihood with Dirichlet smoothing.
+
+<ParamField path="mu" type="float" required>
+  Dirichlet smoothing parameter. Typical values: 1000-2500. Default: 1000
+</ParamField>
+
+**Example**:
+```java
+searcher.set_qld(2500f);
+```
+
+#### get_similarity()
+
+```java
+public Similarity get_similarity()
+```
+
+Returns the current scoring function (Similarity) being used.
+
+**Returns**: `Similarity` - The Lucene Similarity object
+
+### Analyzers
+
+#### set_analyzer(Analyzer analyzer)
+
+```java
+public void set_analyzer(Analyzer analyzer)
+```
+
+Sets the analyzer used for query processing.
+
+<ParamField path="analyzer" type="Analyzer" required>
+  Lucene analyzer instance
+</ParamField>
+
+#### get_analyzer()
+
+```java
+public Analyzer get_analyzer()
+```
+
+Returns the current analyzer.
+
+**Returns**: `Analyzer` - The current Lucene Analyzer
+
+#### set_language(String language)
+
+```java
+public void set_language(String language)
+```
+
+Sets the analyzer based on language code.
+
+<ParamField path="language" type="String" required>
+  Two-letter language code. Supported: `ar`, `bn`, `zh`, `da`, `nl`, `en`, `fi`, `fr`, `de`, `hi`, `hu`, `id`, `it`, `ja`, `ko`, `no`, `pl`, `pt`, `ru`, `es`, `sv`, `te`, `th`, `tr`, `uk`
+</ParamField>
+
+**Example**:
+```java
+searcher.set_language("zh");  // Chinese
+searcher.set_language("fr");  // French
+```
+
+### Query Expansion
+
+#### RM3 (Relevance Model 3)
+
+##### set_rm3()
+
+```java
+public void set_rm3()
+```
+
+Enables RM3 query expansion with default parameters (10 terms, 10 docs, 0.5 weight).
+
+##### set_rm3(int fbTerms, int fbDocs, float originalQueryWeight)
+
+```java
+public void set_rm3(int fbTerms, int fbDocs, float originalQueryWeight)
+```
+
+<ParamField path="fbTerms" type="int" required>
+  Number of expansion terms (typically 10-20)
+</ParamField>
+
+<ParamField path="fbDocs" type="int" required>
+  Number of feedback documents (typically 10)
+</ParamField>
+
+<ParamField path="originalQueryWeight" type="float" required>
+  Weight for original query vs. expansion terms (0.0-1.0, typically 0.5)
+</ParamField>
+
+##### set_rm3(String collectionClass, int fbTerms, int fbDocs, float originalQueryWeight, boolean outputQuery, boolean filterTerms)
+
+```java
+public void set_rm3(String collectionClass, int fbTerms, int fbDocs, 
+                    float originalQueryWeight, boolean outputQuery, boolean filterTerms)
+```
+
+Full configuration including collection class for on-the-fly document parsing.
+
+<ParamField path="collectionClass" type="String">
+  Collection class name for parsing documents if index lacks docvectors (e.g., "JsonCollection")
+</ParamField>
+
+<ParamField path="outputQuery" type="boolean">
+  Print original and expanded queries
+</ParamField>
+
+<ParamField path="filterTerms" type="boolean">
+  Filter terms to English only
+</ParamField>
+
+##### use_rm3()
+
+```java
+public boolean use_rm3()
+```
+
+Checks if RM3 is enabled.
+
+**Returns**: `boolean` - true if RM3 is enabled
+
+##### unset_rm3()
+
+```java
+public void unset_rm3()
+```
+
+Disables RM3 query expansion.
+
+#### Rocchio
+
+##### set_rocchio()
+
+```java
+public void set_rocchio()
+```
+
+Enables Rocchio query expansion with default parameters.
+
+##### set_rocchio(String collectionClass, int topFbTerms, int topFbDocs, int bottomFbTerms, int bottomFbDocs, float alpha, float beta, float gamma, boolean outputQuery, boolean useNegative)
+
+```java
+public void set_rocchio(String collectionClass, int topFbTerms, int topFbDocs,
+                        int bottomFbTerms, int bottomFbDocs, float alpha, 
+                        float beta, float gamma, boolean outputQuery, boolean useNegative)
+```
+
+<ParamField path="collectionClass" type="String">
+  Collection class for document parsing
+</ParamField>
+
+<ParamField path="topFbTerms" type="int">
+  Number of relevant expansion terms
+</ParamField>
+
+<ParamField path="topFbDocs" type="int">
+  Number of relevant expansion documents
+</ParamField>
+
+<ParamField path="bottomFbTerms" type="int">
+  Number of non-relevant expansion terms
+</ParamField>
+
+<ParamField path="bottomFbDocs" type="int">
+  Number of non-relevant expansion documents
+</ParamField>
+
+<ParamField path="alpha" type="float">
+  Weight for original query (typically 1.0)
+</ParamField>
+
+<ParamField path="beta" type="float">
+  Weight for relevant document vectors (typically 0.75)
+</ParamField>
+
+<ParamField path="gamma" type="float">
+  Weight for non-relevant document vectors (typically 0.15)
+</ParamField>
+
+<ParamField path="useNegative" type="boolean">
+  Use negative feedback from non-relevant documents
+</ParamField>
+
+##### use_rocchio()
+
+```java
+public boolean use_rocchio()
+```
+
+Checks if Rocchio is enabled.
+
+**Returns**: `boolean` - true if Rocchio is enabled
+
+##### unset_rocchio()
+
+```java
+public void unset_rocchio()
+```
+
+Disables Rocchio query expansion.
+
+## Search Methods
+
+### Single Query Search
+
+#### search(String q)
+
+```java
+public ScoredDoc[] search(String q) throws IOException
+```
+
+Searches with a query string, returning 10 results by default.
+
+<ParamField path="q" type="String" required>
+  Query string
+</ParamField>
+
+**Returns**: `ScoredDoc[]` - Array of search results
+
+#### search(String q, int k)
+
+```java
+public ScoredDoc[] search(String q, int k) throws IOException
+```
+
+Searches with a query string, returning k results.
+
+<ParamField path="q" type="String" required>
+  Query string
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of hits to return
+</ParamField>
+
+**Returns**: `ScoredDoc[]` - Array of search results
+
+#### search(Query query, int k)
+
+```java
+public ScoredDoc[] search(Query query, int k) throws IOException
+```
+
+Searches with a pre-constructed Lucene Query.
+
+<ParamField path="query" type="Query" required>
+  Lucene Query object
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of hits to return
+</ParamField>
+
+**Returns**: `ScoredDoc[]` - Array of search results
+
+#### search(QueryGenerator generator, String q, int k)
+
+```java
+public ScoredDoc[] search(QueryGenerator generator, String q, int k) throws IOException
+```
+
+Searches with a specified QueryGenerator.
+
+<ParamField path="generator" type="QueryGenerator" required>
+  Custom QueryGenerator implementation
+</ParamField>
+
+<ParamField path="q" type="String" required>
+  Query string
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of hits to return
+</ParamField>
+
+**Returns**: `ScoredDoc[]` - Array of search results
+
+### Multi-Field Search
+
+#### searchFields(String q, Map&lt;String, Float&gt; fields, int k)
+
+```java
+public ScoredDoc[] search_fields(String q, Map<String, Float> fields, int k) throws IOException
+```
+
+Searches multiple fields with specified weights.
+
+<ParamField path="q" type="String" required>
+  Query string
+</ParamField>
+
+<ParamField path="fields" type="Map<String, Float>" required>
+  Map of field names to weights
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of hits to return
+</ParamField>
+
+**Returns**: `ScoredDoc[]` - Array of search results
+
+**Example**:
+```java
+Map<String, Float> fields = new HashMap<>();
+fields.put("contents", 0.8f);
+fields.put("title", 0.2f);
+ScoredDoc[] results = searcher.search_fields("information retrieval", fields, 10);
+```
+
+### Batch Search
+
+#### batch_search
+
+```java
+public Map<String, ScoredDoc[]> batch_search(List<String> queries, 
+                                             List<String> qids, int k, int threads)
+```
+
+Searches multiple queries in parallel.
+
+<ParamField path="queries" type="List<String>" required>
+  List of query strings
+</ParamField>
+
+<ParamField path="qids" type="List<String>" required>
+  List of query IDs (must match queries length)
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of hits per query
+</ParamField>
+
+<ParamField path="threads" type="int" required>
+  Number of threads for parallel search
+</ParamField>
+
+**Returns**: `Map<String, ScoredDoc[]>` - Map from query ID to results
+
+**Example**:
+```java
+List<String> queries = Arrays.asList("query1", "query2", "query3");
+List<String> qids = Arrays.asList("1", "2", "3");
+Map<String, ScoredDoc[]> results = searcher.batch_search(queries, qids, 100, 8);
+```
+
+## Document Retrieval Methods
+
+### doc(int lucene_docid)
+
+```java
+public Document doc(int lucene_docid)
+```
+
+Fetches a document by internal Lucene docid.
+
+<ParamField path="lucene_docid" type="int" required>
+  Internal Lucene document ID
+</ParamField>
+
+**Returns**: `Document` - Lucene Document object
+
+### doc(String docid)
+
+```java
+public Document doc(String docid)
+```
+
+Fetches a document by collection docid.
+
+<ParamField path="docid" type="String" required>
+  Collection document ID
+</ParamField>
+
+**Returns**: `Document` - Lucene Document object
+
+### doc_by_field(String field, String id)
+
+```java
+public Document doc_by_field(String field, String id)
+```
+
+Fetches a document by a specific field value (e.g., DOI).
+
+<ParamField path="field" type="String" required>
+  Field name
+</ParamField>
+
+<ParamField path="id" type="String" required>
+  Field value to match
+</ParamField>
+
+**Returns**: `Document` - Lucene Document object
+
+### batch_get_docs
+
+```java
+public Map<String, Document> batch_get_docs(List<String> docids, int threads)
+```
+
+Fetches multiple documents in parallel.
+
+<ParamField path="docids" type="List<String>" required>
+  List of collection document IDs
+</ParamField>
+
+<ParamField path="threads" type="int" required>
+  Number of threads
+</ParamField>
+
+**Returns**: `Map<String, Document>` - Map from docid to Document
+
+### Document Content Methods
+
+#### doc_contents(int lucene_docid)
+
+```java
+public String doc_contents(int lucene_docid)
+```
+
+Returns the "contents" field of a document.
+
+**Returns**: `String` - Document contents
+
+#### doc_contents(String docid)
+
+```java
+public String doc_contents(String docid)
+```
+
+Returns the "contents" field by collection docid.
+
+**Returns**: `String` - Document contents
+
+#### doc_raw(int lucene_docid)
+
+```java
+public String doc_raw(int lucene_docid)
+```
+
+Returns the "raw" field of a document (original JSON/XML).
+
+**Returns**: `String` - Raw document
+
+#### doc_raw(String docid)
+
+```java
+public String doc_raw(String docid)
+```
+
+Returns the "raw" field by collection docid.
+
+**Returns**: `String` - Raw document
+
+## Utility Methods
+
+### get_total_num_docs()
+
+```java
+public int get_total_num_docs()
+```
+
+Returns the total number of documents in the index.
+
+**Returns**: `int` - Total document count
+
+### get_feedback_terms(String q)
+
+```java
+public Map<String, Float> get_feedback_terms(String q) throws IOException
+```
+
+Returns feedback terms and weights for a query (when RM3/Rocchio is enabled).
+
+<ParamField path="q" type="String" required>
+  Query string
+</ParamField>
+
+**Returns**: `Map<String, Float>` - Map from term to weight
+
+### close()
+
+```java
+public void close() throws IOException
+```
+
+Closes the searcher and releases resources.
+
+## Return Types
+
+### ScoredDoc
+
+Represents a single search result:
+
+<ResponseField name="docid" type="String">
+  Collection document ID
+</ResponseField>
+
+<ResponseField name="lucene_docid" type="int">
+  Internal Lucene document ID
+</ResponseField>
+
+<ResponseField name="score" type="float">
+  Retrieval score
+</ResponseField>
+
+<ResponseField name="lucene_document" type="Document">
+  Lucene Document object with all stored fields
+</ResponseField>
+
+## Usage Examples
+
+### Basic Search
+
+```java
+import io.anserini.search.SimpleSearcher;
+
+public class BasicSearchExample {
+  public static void main(String[] args) throws Exception {
+    SimpleSearcher searcher = new SimpleSearcher("/path/to/index");
+    
+    ScoredDoc[] results = searcher.search("information retrieval", 10);
+    
+    for (int i = 0; i < results.length; i++) {
+      System.out.printf("%d. %s (%.4f)\n", 
+          i + 1, results[i].docid, results[i].score);
+    }
+    
+    searcher.close();
+  }
+}
+```
+
+### BM25 Search with Custom Parameters
+
+```java
+SimpleSearcher searcher = new SimpleSearcher("/path/to/index");
+searcher.set_bm25(1.2f, 0.75f);
+
+ScoredDoc[] results = searcher.search("machine learning", 20);
+
+for (ScoredDoc doc : results) {
+  String contents = searcher.doc_contents(doc.docid);
+  System.out.println(doc.docid + ": " + contents.substring(0, 100));
+}
+
+searcher.close();
+```
+
+### RM3 Query Expansion
+
+```java
+SimpleSearcher searcher = new SimpleSearcher("/path/to/index");
+searcher.set_bm25(0.9f, 0.4f);
+searcher.set_rm3(10, 10, 0.5f);
+
+ScoredDoc[] results = searcher.search("neural networks", 10);
+
+// Get feedback terms
+Map<String, Float> fbTerms = searcher.get_feedback_terms("neural networks");
+System.out.println("Expansion terms: " + fbTerms);
+
+searcher.close();
+```
+
+### Multi-Language Search
+
+```java
+// Chinese search
+SimpleSearcher zhSearcher = new SimpleSearcher("/path/to/chinese/index");
+zhSearcher.set_language("zh");
+ScoredDoc[] zhResults = zhSearcher.search("信息检索", 10);
+
+// French search
+SimpleSearcher frSearcher = new SimpleSearcher("/path/to/french/index");
+frSearcher.set_language("fr");
+ScoredDoc[] frResults = frSearcher.search("recherche d'information", 10);
+```
+
+### Batch Search with Multiple Threads
+
+```java
+SimpleSearcher searcher = new SimpleSearcher("/path/to/index");
+searcher.set_bm25(0.9f, 0.4f);
+
+List<String> queries = Arrays.asList(
+    "information retrieval",
+    "machine learning",
+    "natural language processing"
+);
+List<String> qids = Arrays.asList("1", "2", "3");
+
+Map<String, ScoredDoc[]> results = searcher.batch_search(queries, qids, 100, 4);
+
+for (Map.Entry<String, ScoredDoc[]> entry : results.entrySet()) {
+  System.out.println("Query " + entry.getKey() + ": " + 
+                     entry.getValue().length + " results");
+}
+
+searcher.close();
+```
+
+### Multi-Field Search
+
+```java
+SimpleSearcher searcher = new SimpleSearcher("/path/to/index");
+
+Map<String, Float> fields = new HashMap<>();
+fields.put("contents", 0.7f);
+fields.put("title", 0.2f);
+fields.put("abstract", 0.1f);
+
+ScoredDoc[] results = searcher.search_fields("deep learning", fields, 10);
+
+for (ScoredDoc doc : results) {
+  Document luceneDoc = doc.lucene_document;
+  System.out.printf("%s: %s (%.4f)\n",
+      doc.docid,
+      luceneDoc.get("title"),
+      doc.score);
+}
+
+searcher.close();
+```
+
+## See Also
+
+- [SearchCollection](/api/search/search-collection) - Batch search with extensive configuration options
+- [HnswDenseSearcher](/api/search/dense-searcher) - Dense vector search with HNSW
+- [FlatDenseSearcher](/api/search/dense-searcher) - Dense vector search with flat index

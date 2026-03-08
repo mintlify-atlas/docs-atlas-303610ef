@@ -1,0 +1,411 @@
+---
+title: Tokenizers API
+description: Text tokenization components for analysis
+---
+
+## Overview
+
+Anserini uses Lucene's tokenization framework along with custom tokenizers for specialized text processing. Tokenizers break text into individual tokens as the first step in the analysis pipeline.
+
+## Built-in Lucene Tokenizers
+
+Anserini leverages standard Lucene tokenizers:
+
+### StandardTokenizer
+
+The default tokenizer for general text, used by `DefaultEnglishAnalyzer`.
+
+```java
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.standard.StandardTokenizer;
+import java.io.StringReader;
+
+public class StandardTokenizerExample {
+    public static void main(String[] args) throws Exception {
+        String text = "The quick brown fox jumps over the lazy dog.";
+        
+        Tokenizer tokenizer = new StandardTokenizer();
+        tokenizer.setReader(new StringReader(text));
+        tokenizer.reset();
+        
+        // Process tokens...
+        tokenizer.close();
+    }
+}
+```
+
+**Features:**
+- Unicode-aware tokenization
+- Recognizes URLs, emails, numbers
+- Handles punctuation appropriately
+- Splits on whitespace and punctuation
+
+**Example:**
+```
+Input:  "Hello, world! Visit https://anserini.io"
+Tokens: ["Hello", "world", "Visit", "https://anserini.io"]
+```
+
+### WhitespaceTokenizer
+
+Splits text on whitespace only, used by `TweetAnalyzer`.
+
+```java
+import org.apache.lucene.analysis.core.WhitespaceTokenizer;
+
+Tokenizer tokenizer = new WhitespaceTokenizer();
+// Splits only on spaces, tabs, newlines
+```
+
+**Features:**
+- Simple whitespace splitting
+- Preserves punctuation within tokens
+- Fast and efficient
+- Good for pre-tokenized text
+
+**Example:**
+```
+Input:  "#hashtag @mention https://url.com"
+Tokens: ["#hashtag", "@mention", "https://url.com"]
+```
+
+## Custom Anserini Tokenizers
+
+### FeatureVectorsTokenizer
+
+Tokenizer for processing pre-computed feature vectors.
+
+#### Package
+
+`io.anserini.analysis.FeatureVectorsTokenizer`
+
+#### Purpose
+
+Processes text representations that are already in feature vector format, typically for learned sparse retrieval models.
+
+#### Usage
+
+```java
+import io.anserini.analysis.FeatureVectorsTokenizer;
+import org.apache.lucene.analysis.Tokenizer;
+import java.io.StringReader;
+
+public class FeatureVectorExample {
+    public static void main(String[] args) throws Exception {
+        // Feature vector format: "term1:weight1 term2:weight2 ..."
+        String features = "information:0.85 retrieval:0.72 system:0.45";
+        
+        Tokenizer tokenizer = new FeatureVectorsTokenizer();
+        tokenizer.setReader(new StringReader(features));
+        tokenizer.reset();
+        
+        // Process feature tokens...
+        tokenizer.close();
+    }
+}
+```
+
+**Use Cases:**
+- Indexing SPLADE vectors
+- Indexing learned sparse representations
+- Pre-computed feature weights
+
+## HuggingFace Tokenization
+
+The `HuggingFaceTokenizerAnalyzer` provides access to HuggingFace tokenizers.
+
+### Supported Tokenizer Types
+
+- **WordPiece** (BERT, DistilBERT)
+- **BPE** (GPT-2, RoBERTa)
+- **SentencePiece** (ALBERT, XLNet)
+- **Unigram** (various multilingual models)
+
+### Basic Usage
+
+```java
+import io.anserini.analysis.HuggingFaceTokenizerAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+
+public class HFTokenizerExample {
+    public static void main(String[] args) throws Exception {
+        // Initialize with model ID
+        Analyzer analyzer = new HuggingFaceTokenizerAnalyzer(
+            "bert-base-uncased"
+        );
+        
+        String text = "Information retrieval systems";
+        
+        try (TokenStream ts = analyzer.tokenStream("field", text)) {
+            CharTermAttribute termAttr = 
+                ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            
+            System.out.println("Tokens:");
+            while (ts.incrementToken()) {
+                System.out.println("  " + termAttr.toString());
+            }
+            ts.end();
+        }
+        
+        analyzer.close();
+    }
+}
+```
+
+### Using Local Tokenizer
+
+```java
+// Use local tokenizer files
+Analyzer analyzer = new HuggingFaceTokenizerAnalyzer(
+    "/path/to/local/tokenizer"
+);
+```
+
+### Common Models
+
+```java
+// BERT base uncased
+new HuggingFaceTokenizerAnalyzer("bert-base-uncased")
+
+// BERT base cased
+new HuggingFaceTokenizerAnalyzer("bert-base-cased")
+
+// DistilBERT
+new HuggingFaceTokenizerAnalyzer("distilbert-base-uncased")
+
+// RoBERTa
+new HuggingFaceTokenizerAnalyzer("roberta-base")
+
+// Multilingual BERT
+new HuggingFaceTokenizerAnalyzer("bert-base-multilingual-cased")
+```
+
+## Tokenization Options
+
+### Special Tokens
+
+The `HuggingFaceTokenizerAnalyzer` is configured to NOT add special tokens automatically:
+
+```java
+// Configuration (internal)
+options.put("addSpecialTokens", "false");
+```
+
+This means `[CLS]`, `[SEP]`, and other special tokens are not added during tokenization.
+
+### Maximum Length
+
+```java
+// Configuration (internal)
+options.put("modelMaxLength", Integer.toString(Integer.MAX_VALUE));
+options.put("maxLength", Integer.toString(Integer.MAX_VALUE));
+```
+
+No length restrictions are enforced, allowing tokenization of arbitrarily long sequences.
+
+## Token Filters
+
+Tokenizers are typically combined with filters in an analysis pipeline:
+
+### Common Filter Chain
+
+```java
+import org.apache.lucene.analysis.*;
+import org.apache.lucene.analysis.core.*;
+import org.apache.lucene.analysis.en.*;
+import org.apache.lucene.analysis.standard.*;
+
+public class CustomAnalyzer extends Analyzer {
+    @Override
+    protected TokenStreamComponents createComponents(String fieldName) {
+        // 1. Tokenizer
+        Tokenizer source = new StandardTokenizer();
+        
+        // 2. Token filters
+        TokenStream result = source;
+        result = new LowerCaseFilter(result);
+        result = new StopFilter(result, EnglishAnalyzer.ENGLISH_STOP_WORDS_SET);
+        result = new PorterStemFilter(result);
+        
+        return new TokenStreamComponents(source, result);
+    }
+}
+```
+
+## Usage Patterns
+
+### Direct Tokenizer Usage
+
+```java
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import java.io.StringReader;
+
+public class DirectTokenizerExample {
+    public static void main(String[] args) throws Exception {
+        String text = "Information retrieval";
+        
+        Tokenizer tokenizer = new StandardTokenizer();
+        tokenizer.setReader(new StringReader(text));
+        tokenizer.reset();
+        
+        CharTermAttribute termAttr = 
+            tokenizer.addAttribute(CharTermAttribute.class);
+        
+        while (tokenizer.incrementToken()) {
+            String token = termAttr.toString();
+            System.out.println("Token: " + token);
+        }
+        
+        tokenizer.end();
+        tokenizer.close();
+    }
+}
+```
+
+### Via Analyzer (Recommended)
+
+```java
+import io.anserini.analysis.DefaultEnglishAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+
+public class AnalyzerTokenizerExample {
+    public static void main(String[] args) throws Exception {
+        Analyzer analyzer = DefaultEnglishAnalyzer.newDefaultInstance();
+        
+        String text = "Information retrieval";
+        
+        try (TokenStream ts = analyzer.tokenStream("contents", text)) {
+            CharTermAttribute termAttr = 
+                ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            
+            while (ts.incrementToken()) {
+                System.out.println("Token: " + termAttr.toString());
+            }
+            
+            ts.end();
+        }
+        
+        analyzer.close();
+    }
+}
+```
+
+### Multiple Attributes
+
+```java
+import org.apache.lucene.analysis.*;
+import org.apache.lucene.analysis.tokenattributes.*;
+
+TokenStream ts = analyzer.tokenStream("contents", text);
+CharTermAttribute termAttr = ts.addAttribute(CharTermAttribute.class);
+OffsetAttribute offsetAttr = ts.addAttribute(OffsetAttribute.class);
+PositionIncrementAttribute posAttr = 
+    ts.addAttribute(PositionIncrementAttribute.class);
+
+ts.reset();
+while (ts.incrementToken()) {
+    String token = termAttr.toString();
+    int start = offsetAttr.startOffset();
+    int end = offsetAttr.endOffset();
+    int posIncr = posAttr.getPositionIncrement();
+    
+    System.out.printf("%s [%d:%d] +%d%n", token, start, end, posIncr);
+}
+ts.end();
+ts.close();
+```
+
+## Tokenization for Social Media
+
+The `TweetAnalyzer` uses `WhitespaceTokenizer` with special handling:
+
+```java
+import io.anserini.analysis.TweetAnalyzer;
+
+Analyzer tweetAnalyzer = new TweetAnalyzer();
+
+String tweet = "RT @user: Check out #Anserini! https://anserini.io";
+// Preserves @mentions, #hashtags, URLs
+```
+
+## Best Practices
+
+### Choose the Right Tokenizer
+
+- **StandardTokenizer**: General text, documents, articles
+- **WhitespaceTokenizer**: Pre-tokenized text, social media
+- **HuggingFaceTokenizer**: Neural models, transformer-based retrieval
+- **FeatureVectorsTokenizer**: Learned sparse representations
+
+### Consistent Tokenization
+
+Use the same tokenizer for indexing and querying:
+
+```java
+// Create analyzer once
+Analyzer analyzer = DefaultEnglishAnalyzer.newDefaultInstance();
+
+// Use for both indexing and search
+IndexWriterConfig indexConfig = new IndexWriterConfig(analyzer);
+QueryParser queryParser = new QueryParser("contents", analyzer);
+```
+
+### Resource Management
+
+```java
+// Tokenizers should be closed
+try (Tokenizer tokenizer = new StandardTokenizer()) {
+    tokenizer.setReader(new StringReader(text));
+    // Use tokenizer
+}
+// Automatically closed
+```
+
+### Testing Tokenization
+
+Utility for testing analyzer output:
+
+```java
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import java.util.ArrayList;
+import java.util.List;
+
+public class TokenizerUtils {
+    public static List<String> tokenize(Analyzer analyzer, String text) 
+            throws Exception {
+        List<String> tokens = new ArrayList<>();
+        
+        try (TokenStream ts = analyzer.tokenStream("field", text)) {
+            CharTermAttribute termAttr = 
+                ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            
+            while (ts.incrementToken()) {
+                tokens.add(termAttr.toString());
+            }
+            
+            ts.end();
+        }
+        
+        return tokens;
+    }
+}
+
+// Usage
+List<String> tokens = TokenizerUtils.tokenize(analyzer, "sample text");
+```
+
+## See Also
+
+- [Analyzers API](/api/analysis/analyzers) - Complete analysis pipelines
+- [Indexing API](/api/indexing) - Using tokenizers for indexing

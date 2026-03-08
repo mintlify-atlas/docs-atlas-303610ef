@@ -1,0 +1,330 @@
+---
+title: Working with Custom Collections
+description: How to index and search your own document collections with Anserini
+---
+
+## Overview
+
+Anserini supports indexing and retrieving custom document collections, making it suitable for building search pipelines with your own data. This guide walks through creating custom collection implementations and working with different document formats.
+
+<Note>
+Anserini is ideal for use cases requiring:
+- Essential, comprehensible search capability (BM25 similarity scoring) at first
+- Flexible, programmable configurations for the future
+</Note>
+
+## Quickstart: JSON Format
+
+The fastest way to get started is to convert your collection to Anserini's JSON format, which is compatible with the MS MARCO pipeline.
+
+### Step 1: Prepare Your Collection
+
+Convert your documents to JSON format. Each `.json` file can contain either:
+
+**Single document (JSON Object):**
+
+```json
+{
+    "id": "doc1",
+    "contents": "this is the contents."
+}
+```
+
+**Multiple documents (JSON Array):**
+
+```json
+[
+    {
+        "id": "doc1",
+        "contents": "this is the contents 1."
+    },
+    {
+        "id": "doc2",
+        "contents": "this is the contents 2."
+    }
+]
+```
+
+<Tip>
+Use a conversion script like [this MS MARCO example](https://github.com/castorini/anserini/blob/master/src/main/python/msmarco/convert_collection_to_jsonl.py) to transform your data into the JSON format.
+</Tip>
+
+### Step 2: Prepare Queries File
+
+Create a queries file with one query per line:
+
+```
+qid1[TAB]query text 1[NEWLINE]
+qid2[TAB]query text 2[NEWLINE]
+```
+
+**Example:**
+
+```
+1048585	what is paula deen's brother
+1048642	what is paranoid sc
+524332	treating tension headaches without medication
+```
+
+### Step 3: Index the Collection
+
+Use `JsonCollection` with `DefaultLuceneDocumentGenerator`:
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -generator DefaultLuceneDocumentGenerator \
+  -threads 9 \
+  -input /path/to/json/collection \
+  -index /path/to/index \
+  -storePositions -storeDocvectors -storeRaw
+```
+
+**Index options explained:**
+
+- `-storePositions`: Enables phrase queries and proximity scoring
+- `-storeDocvectors`: Stores term vectors for query expansion (RM3, Rocchio)
+- `-storeRaw`: Stores raw document text for retrieval and display
+
+### Step 4: Run Retrieval
+
+Search the indexed collection:
+
+```bash
+bin/run.sh io.anserini.search.SearchCollection \
+  -index /path/to/index \
+  -topics /path/to/queries.tsv \
+  -topicReader TsvInt \
+  -output /path/to/run.txt \
+  -bm25
+```
+
+The output is a TREC-format run file with ranked results for each query.
+
+## Custom DocumentCollection Implementations
+
+For more control or different formats, implement a custom `DocumentCollection` class.
+
+### Understanding the Architecture
+
+Anserini uses two main abstractions:
+
+<Card title="DocumentCollection" icon="folder-open">
+Iterates over documents in a collection, handling file I/O and format parsing
+</Card>
+
+<Card title="Generator" icon="wand-magic-sparkles">
+Converts collection documents into Lucene's internal document representation
+</Card>
+
+### Example: Custom Collection Class
+
+Here's a conceptual example for a custom XML collection:
+
+```java
+public class CustomXmlCollection extends DocumentCollection<CustomXmlCollection.Document> {
+  
+  @Override
+  public FileSegment<Document> createFileSegment(Path p) throws IOException {
+    return new CustomXmlSegment(p);
+  }
+  
+  public static class CustomXmlSegment extends FileSegment<Document> {
+    // Implement XML parsing logic
+    
+    @Override
+    public void readNext() throws IOException {
+      // Parse next document from XML
+    }
+  }
+  
+  public static class Document implements SourceDocument {
+    private String id;
+    private String contents;
+    
+    @Override
+    public String id() { return id; }
+    
+    @Override
+    public String contents() { return contents; }
+    
+    @Override
+    public String raw() { return "<doc>" + contents + "</doc>"; }
+    
+    @Override
+    public boolean indexable() { return true; }
+  }
+}
+```
+
+### Custom Generator Classes
+
+Generators transform source documents into Lucene documents. For most use cases, `DefaultLuceneDocumentGenerator` works well, but you can customize indexing:
+
+```java
+public class CustomDocumentGenerator implements LuceneDocumentGenerator<CustomDocument> {
+  
+  @Override
+  public Document createDocument(CustomDocument src) throws GeneratorException {
+    Document doc = new Document();
+    
+    // Add document ID (required)
+    doc.add(new StringField("id", src.id(), Field.Store.YES));
+    
+    // Add contents (indexed and stored)
+    doc.add(new TextField("contents", src.contents(), Field.Store.YES));
+    
+    // Add custom fields
+    doc.add(new StringField("category", src.category(), Field.Store.YES));
+    doc.add(new LongPoint("timestamp", src.timestamp()));
+    
+    return doc;
+  }
+}
+```
+
+## Working with Different Formats
+
+Anserini includes built-in support for various collection formats:
+
+### HTML/XML Collections
+
+For web crawls or HTML documents:
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection ClueWeb09Collection \
+  -generator JsoupGenerator \
+  -input /path/to/html/docs \
+  -index /path/to/index
+```
+
+`JsoupGenerator` uses the Jsoup library to parse HTML and extract clean text.
+
+### TREC Collections
+
+For standard TREC format:
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection TrecCollection \
+  -generator DefaultLuceneDocumentGenerator \
+  -input /path/to/trec/docs \
+  -index /path/to/index
+```
+
+### CSV/TSV Collections
+
+For tabular data, first convert to JSON format or implement a custom collection class that reads your specific delimiter format.
+
+## Example: Complete Custom Pipeline
+
+Let's walk through a complete example with a hypothetical product catalog:
+
+**1. Source data (products.json):**
+
+```json
+[
+  {
+    "id": "PROD-001",
+    "contents": "Wireless Bluetooth Headphones with Noise Cancellation",
+    "category": "Electronics",
+    "price": 149.99
+  },
+  {
+    "id": "PROD-002",
+    "contents": "Ergonomic Office Chair with Lumbar Support",
+    "category": "Furniture",
+    "price": 299.99
+  }
+]
+```
+
+**2. Index the collection:**
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -generator DefaultLuceneDocumentGenerator \
+  -threads 4 \
+  -input collections/products/ \
+  -index indexes/products \
+  -storePositions -storeDocvectors -storeRaw
+```
+
+**3. Create queries (queries.tsv):**
+
+```
+1	bluetoothheadphones
+2	office chair ergonomic
+```
+
+**4. Search:**
+
+```bash
+bin/run.sh io.anserini.search.SearchCollection \
+  -index indexes/products \
+  -topics queries.tsv \
+  -topicReader TsvInt \
+  -output runs/products.txt \
+  -bm25 -hits 10
+```
+
+**5. Review results:**
+
+The output file contains TREC-formatted results:
+
+```
+1 Q0 PROD-001 1 14.5320 Anserini
+2 Q0 PROD-002 1 18.2130 Anserini
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Data Preparation" icon="database">
+    Clean and normalize text before indexing. Remove markup, handle encoding issues, and standardize formatting.
+  </Card>
+  
+  <Card title="Index Options" icon="sliders">
+    Use `-storePositions` for phrase queries, `-storeDocvectors` for query expansion, and `-storeRaw` to retrieve original documents.
+  </Card>
+  
+  <Card title="Threading" icon="microchip">
+    Use multiple threads (`-threads`) to speed up indexing on multi-core systems. Start with number of CPU cores.
+  </Card>
+  
+  <Card title="Testing" icon="flask">
+    Start with a small subset of your collection to verify the pipeline works before indexing everything.
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+**Encoding problems**: Ensure your JSON files are UTF-8 encoded
+
+**Memory errors**: Reduce thread count or increase JVM heap size: `-Xmx4g`
+
+**Slow indexing**: Check disk I/O performance and consider using SSD storage
+
+**Missing results**: Verify document IDs are unique and contents field is not empty
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Indexing Options" icon="book" href="https://github.com/castorini/anserini/blob/master/docs/common-indexing-options.md">
+    Complete reference for indexing parameters
+  </Card>
+  
+  <Card title="MS MARCO Pipeline" icon="route" href="https://github.com/castorini/anserini/blob/master/docs/experiments-msmarco-passage.md">
+    Example pipeline with data preparation
+  </Card>
+  
+  <Card title="Source Code" icon="code" href="https://github.com/castorini/anserini/tree/master/src/main/java/io/anserini/collection">
+    Collection implementations in Anserini
+  </Card>
+  
+  <Card title="Generator Classes" icon="wand-magic" href="https://github.com/castorini/anserini/tree/master/src/main/java/io/anserini/index">
+    Document generator implementations
+  </Card>
+</CardGroup>

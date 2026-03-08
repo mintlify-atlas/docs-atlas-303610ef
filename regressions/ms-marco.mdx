@@ -1,0 +1,288 @@
+---
+title: MS MARCO Regressions
+description: Regression tests for MS MARCO passage and document collections
+---
+
+## Overview
+
+Anserini provides comprehensive regression tests for the MS MARCO datasets, including:
+
+- **MS MARCO V1**: Passage and document rankings
+- **MS MARCO V2**: Passage and document rankings
+- **MS MARCO V2.1**: Latest version with updated documents
+- **TREC Deep Learning Tracks**: DL19, DL20, DL21, DL22, DL23
+- **RAG24**: Retrieval-Augmented Generation track
+
+## MS MARCO V1
+
+### V1 Passage Collection
+
+The MS MARCO V1 passage collection contains approximately 8.8 million passages. Anserini supports multiple indexing and retrieval approaches:
+
+#### Standard BM25 Indexing
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage
+```
+
+#### Document Expansion Variants
+
+MS MARCO V1 supports several document expansion techniques:
+
+- **doc2query**: Query prediction for document expansion
+- **docTTTTTquery**: Enhanced query prediction with more queries per document
+
+```bash
+# docTTTTTquery regression
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage.docTTTTTquery
+```
+
+#### Learned Sparse Representations
+
+Multiple learned sparse indexing approaches are available:
+
+- **UNICOIL**: Universal contextualized inverted list
+- **DeepImpact**: Impact-based learned sparse retrieval
+- **SPLADE**: Sparse Lexical and Expansion model
+  - SPLADE++ (ED): Ensemble distillation variant
+  - SPLADE++ (SD): Self-distillation variant  
+  - SPLADE v3: Latest version
+
+```bash
+# SPLADE++ ED with cached representations
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage.splade-pp-ed.cached
+
+# SPLADE++ ED with ONNX inference
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage.splade-pp-ed.onnx
+```
+
+#### Dense Vector Representations
+
+Dense retrieval with multiple encoders:
+
+- **DPR-distil**: Distilled dense passage retrieval
+- **BGE-base-en-v1.5**: BAAI general embedding model
+- **OpenAI Ada-2**: OpenAI embedding model
+- **Cohere Embed v3.0**: Cohere embedding model
+
+Each supports multiple index types:
+- **Flat**: Exact search (slower, more accurate)
+- **HNSW**: Approximate nearest neighbor (faster, slight quality tradeoff)
+- **INT8**: Quantized for smaller index size
+
+```bash
+# BGE with flat index and cached queries
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage.bge-base-en-v1.5.parquet.flat.cached
+
+# BGE with HNSW index and ONNX inference  
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage.bge-base-en-v1.5.parquet.hnsw.onnx
+```
+
+### V1 Document Collection
+
+The MS MARCO V1 document collection contains approximately 3.2 million documents.
+
+#### Whole Document Indexing
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-doc
+```
+
+#### Segmented Document Indexing
+
+Documents are segmented into passages for more effective retrieval:
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-doc-segmented
+```
+
+<Info>
+  Segmented indexing often provides better effectiveness than whole-document indexing for long documents.
+</Info>
+
+### TREC Deep Learning Tracks (DL19/DL20)
+
+The TREC Deep Learning tracks use the MS MARCO V1 collection with human-judged relevance assessments.
+
+```bash
+# DL19 passage ranking
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression dl19-passage
+
+# DL20 passage ranking  
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression dl20-passage
+```
+
+## MS MARCO V2
+
+### V2 Passage Collection
+
+MS MARCO V2 passage collection is significantly larger than V1.
+
+```bash
+# Standard BM25
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v2-passage
+
+# With doc2query-T5 expansion
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v2-passage.d2q-t5
+
+# SPLADE++ ED
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v2-passage.splade-pp-ed.cached
+```
+
+### V2 Document Collection
+
+```bash
+# Whole documents
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v2-doc
+
+# Segmented documents  
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v2-doc-segmented
+```
+
+### TREC Deep Learning Tracks (DL21/DL22/DL23)
+
+```bash
+# DL21 passage ranking
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression dl21-passage
+
+# DL22 passage ranking
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression dl22-passage
+
+# DL23 passage ranking  
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression dl23-passage
+```
+
+## MS MARCO V2.1
+
+MS MARCO V2.1 is the latest version with updated document content.
+
+```bash
+# V2.1 document collection
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v2.1-doc
+
+# V2.1 segmented with SPLADE v3
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v2.1-doc-segmented.splade-v3.cached
+```
+
+### RAG24 Track
+
+The Retrieval-Augmented Generation track uses MS MARCO V2.1:
+
+```bash
+# RAG24 test collection (umbrella topics)
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression rag24-doc-segmented-test-umbrela
+
+# RAG24 test collection (NIST topics)  
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression rag24-doc-segmented-test-nist
+```
+
+## Expected Effectiveness
+
+### MS MARCO V1 Passage (Dev Set)
+
+Key configurations and their expected effectiveness:
+
+| Configuration | MRR@10 | Recall@1000 |
+|--------------|---------|-------------|
+| BM25 (default) | ~0.184 | ~0.857 |
+| BM25 + RM3 | ~0.177 | ~0.870 |
+| docTTTTTquery | ~0.277 | ~0.947 |
+| UNICOIL | ~0.352 | ~0.950 |
+| SPLADE++ (ED) | ~0.384 | ~0.967 |
+| SPLADE v3 | ~0.396 | ~0.973 |
+
+<Info>
+  Exact scores may vary slightly. Run the regressions to see precise values for your environment.
+</Info>
+
+### TREC DL19 Passage
+
+Key metrics for DL19:
+
+| Configuration | nDCG@10 | MAP |
+|--------------|---------|-----|
+| BM25 (default) | ~0.506 | ~0.301 |
+| docTTTTTquery | ~0.724 | ~0.442 |
+| UNICOIL | ~0.698 | ~0.409 |
+| SPLADE++ (ED) | ~0.732 | ~0.456 |
+
+## Index Types Comparison
+
+### Inverted Indexes (Sparse)
+- Fast retrieval
+- Smaller index size
+- Lexical matching
+- Good for keyword queries
+
+### Dense Indexes (Flat)
+- Exact nearest neighbor search
+- Better semantic matching  
+- Larger index size
+- Slower retrieval
+
+### Dense Indexes (HNSW)
+- Approximate nearest neighbor
+- Fast retrieval
+- Slight quality tradeoff
+- Good balance of speed and accuracy
+
+### Quantized Indexes (INT8)
+- Significantly smaller index size
+- Minimal quality degradation
+- Faster retrieval than full precision
+- Recommended for production deployments
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Running Regressions" icon="play" href="/regressions/running-regressions">
+    Learn how to run these regressions yourself
+  </Card>
+  <Card title="BEIR Regressions" icon="database" href="/regressions/beir">
+    Cross-dataset evaluation with BEIR
+  </Card>
+</CardGroup>

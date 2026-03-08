@@ -1,80 +1,161 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quickstart'
+description: 'Get started with Anserini in minutes using the prebuilt fatjar'
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will get you up and running with Anserini quickly using the prebuilt fatjar. You'll download the toolkit, run a BM25 search on the MS MARCO passage corpus, and evaluate your results.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+This quickstart uses prebuilt indexes that are automatically downloaded on first use. These can take up significant disk space. See the [prebuilt indexes guide](/indexing/prebuilt-indexes) for more details.
 </Note>
+
+## Prerequisites
+
+You need **Java 21** installed on your system. Yes, you need exactly this version.
+
+<CodeGroup>
+```bash Check Java Version
+java -version
+```
+
+```bash macOS (Homebrew)
+brew install openjdk@21
+```
+
+```bash Ubuntu/Debian
+sudo apt install openjdk-21-jdk
+```
+</CodeGroup>
+
+## Download the Fatjar
+
+<Steps>
+  <Step title="Download Anserini">
+    Fetch the latest Anserini fatjar (v1.6.0) from Maven Central:
+    
+    ```bash
+    wget https://repo1.maven.org/maven2/io/anserini/anserini/1.6.0/anserini-1.6.0-fatjar.jar
+    ```
+    
+    The fatjar is a self-contained package that includes all dependencies and prebuilt indexes.
+  </Step>
+</Steps>
+
+## Run Your First Search
+
+<Steps>
+  <Step title="Perform BM25 Search">
+    Run a BM25 search on the MS MARCO passage corpus using the dev queries:
+    
+    ```bash
+    java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+      -index msmarco-v1-passage \
+      -topics msmarco-v1-passage.dev \
+      -output run.msmarco-v1-passage.dev.bm25.txt \
+      -bm25
+    ```
+    
+    <Note>
+    The first time you run this command, Anserini will automatically download the prebuilt index for MS MARCO passage corpus. This may take several minutes depending on your connection speed.
+    </Note>
+    
+    **What this does:**
+    - `-index msmarco-v1-passage`: Uses the prebuilt MS MARCO passage index
+    - `-topics msmarco-v1-passage.dev`: Uses the dev query set
+    - `-output run.msmarco-v1-passage.dev.bm25.txt`: Saves results to this file
+    - `-bm25`: Uses BM25 ranking algorithm
+  </Step>
+  
+  <Step title="Evaluate Results">
+    Evaluate the search results using the built-in `trec_eval` tool:
+    
+    ```bash
+    java -cp anserini-1.6.0-fatjar.jar trec_eval -c -M 10 -m recip_rank \
+      msmarco-v1-passage.dev \
+      run.msmarco-v1-passage.dev.bm25.txt
+    ```
+    
+    **Expected output:**
+    ```
+    recip_rank              all     0.1840
+    ```
+    
+    You should get an MRR (Mean Reciprocal Rank) of **0.1840**.
+  </Step>
+</Steps>
+
+## Try Dense and Sparse Vector Search
+
+Anserini also supports modern neural retrieval approaches.
+
+### Dense Vector Search with BGE
+
+Run the same MS MARCO passage search using the BGE dense encoder:
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.hnsw \
+  -topics msmarco-v1-passage.dev \
+  -encoder BgeBaseEn15 \
+  -output run.msmarco-v1-passage.dev.bge.txt \
+  -efSearch 1000
+```
+
+Evaluate:
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar trec_eval -c -M 10 -m recip_rank \
+  msmarco-v1-passage.dev \
+  run.msmarco-v1-passage.dev.bge.txt
+```
+
+**Expected MRR:** 0.3575 (significantly better than BM25!)
+
+### Learned Sparse Search with SPLADE-v3
+
+Run search using SPLADE-v3 learned sparse representations:
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage.splade-v3 \
+  -topics msmarco-v1-passage.dev \
+  -encoder SpladeV3 \
+  -output run.msmarco-v1-passage.dev.splade-v3.txt \
+  -impact -pretokenized
+```
+
+Evaluate:
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar trec_eval -c -M 10 -m recip_rank \
+  msmarco-v1-passage.dev \
+  run.msmarco-v1-passage.dev.splade-v3.txt
+```
+
+**Expected MRR:** 0.4000 (even better!)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Build Anserini from source for development
+  </Card>
+  
+  <Card title="Regression Tests" icon="flask" href="/regressions">
+    Run end-to-end reproducibility experiments
+  </Card>
+  
+  <Card title="Prebuilt Indexes" icon="database" href="/indexing/prebuilt-indexes">
+    Learn about available prebuilt indexes
+  </Card>
+  
+  <Card title="Search APIs" icon="code" href="/api/search/search-collection">
+    Explore search options and parameters
+  </Card>
+</CardGroup>
+
+## More Resources
+
+- [Fatjar regression experiments](https://github.com/castorini/anserini/blob/master/docs/fatjar-regressions/fatjar-regressions-v1.6.0.md) - Complete documentation for fatjar v1.6.0
+- [MS MARCO regressions](https://github.com/castorini/anserini/blob/master/docs/regressions.md) - All MS MARCO regression experiments
+- [Pyserini](http://pyserini.io/) - Python interface to Anserini

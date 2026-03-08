@@ -1,0 +1,302 @@
+---
+title: Dense Retrieval
+description: Dense vector search with HNSW and flat indexes in Anserini
+---
+
+Dense retrieval represents queries and documents as continuous vector embeddings, enabling semantic matching beyond exact term overlap. Anserini supports both approximate (HNSW) and exact (flat) vector search.
+
+## Quick Start
+
+Search MS MARCO passages with BGE-base-en-v1.5 embeddings:
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.hnsw \
+  -topics msmarco-v1-passage.dev \
+  -encoder BgeBaseEn15 \
+  -output run.msmarco.bge.txt \
+  -efSearch 1000
+```
+
+**Expected Result: MRR@10 = 0.3575**
+
+## HNSW Vector Search
+
+Hierarchical Navigable Small World (HNSW) graphs enable fast approximate nearest neighbor search for dense vectors.
+
+### SearchHnswDenseVectors
+
+The main entry point is `SearchHnswDenseVectors.java:47`, which provides efficient similarity search over HNSW indexes.
+
+<Tabs>
+  <Tab title="BGE Models">
+```bash BGE-base-en-v1.5
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.hnsw \
+  -topics msmarco-v1-passage.dev \
+  -encoder BgeBaseEn15 \
+  -output run.bge-base.txt \
+  -efSearch 1000 \
+  -threads 16
+```
+
+**MRR@10 = 0.3575** (full precision)  
+**MRR@10 = 0.3571** (int8 quantized)
+
+BGE (BAAI General Embedding) models from Beijing Academy of AI provide strong zero-shot retrieval performance.
+  </Tab>
+  
+  <Tab title="DPR Models">
+```bash cosDPR-distil
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.cos-dpr-distil.hnsw \
+  -topics msmarco-v1-passage.dev \
+  -encoder CosDprDistil \
+  -output run.cos-dpr-distil.txt \
+  -efSearch 1000
+```
+
+**MRR@10 = 0.3889** (full precision)  
+**MRR@10 = 0.3874** (int8 quantized)
+
+Dense Passage Retrieval (DPR) uses dual encoders trained with contrastive learning on question-passage pairs.
+  </Tab>
+  
+  <Tab title="OpenAI Ada2">
+```bash OpenAI text-embedding-ada-002
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.openai-ada2.hnsw \
+  -topics msmarco-v1-passage.dev \
+  -encoder OpenAiAda2 \
+  -output run.openai-ada2.txt \
+  -efSearch 1000
+```
+
+**MRR@10 = 0.3439** (full precision)
+
+OpenAI's Ada-002 is a general-purpose embedding model trained on diverse data.
+  </Tab>
+  
+  <Tab title="Cohere">
+```bash Cohere embed-english-v3.0
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.cohere-embed-english-v3.0.hnsw \
+  -topics msmarco-v1-passage.dev \
+  -encoder CohereEmbedEnglishV3 \
+  -output run.cohere-v3.txt \
+  -efSearch 1000
+```
+
+**MRR@10 = 0.3651** (full precision)  
+**MRR@10 = 0.3649** (int8 quantized)
+  </Tab>
+</Tabs>
+
+### HNSW Parameters
+
+Key parameters defined in `SearchHnswDenseVectors.java:50-74`:
+
+| Parameter | Description | Default |
+|-----------|-------------|--------|
+| `-index` | HNSW index path | Required |
+| `-topics` | Topics file | Required |
+| `-output` | Output run file | Required |
+| `-encoder` | Encoder model class | Required |
+| `-efSearch` | HNSW search beam width | - |
+| `-hits` | Number of results | 1000 |
+| `-threads` | Parallel threads | 1 |
+| `-topicReader` | Topic format | JsonIntVector |
+| `-topicField` | Field to use | vector |
+
+<Note>
+The `-efSearch` parameter controls the accuracy-speed tradeoff. Higher values improve recall at the cost of slower search. Typical values range from 100-1000.
+</Note>
+
+## Flat Vector Search
+
+Flat indexes perform exact nearest neighbor search via brute-force comparison. While slower than HNSW, they guarantee perfect recall.
+
+### SearchFlatDenseVectors
+
+Use `SearchFlatDenseVectors.java:49` for exact search:
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchFlatDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.flat \
+  -topics msmarco-v1-passage.dev \
+  -encoder BgeBaseEn15 \
+  -output run.bge-flat.txt \
+  -threads 16
+```
+
+**MRR@10 = 0.3575** (identical to HNSW with high efSearch)
+
+<CodeGroup>
+```bash BGE-base-en-v1.5 (flat)
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchFlatDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.flat \
+  -topics msmarco-v1-passage.dev \
+  -encoder BgeBaseEn15 \
+  -output run.flat.txt \
+  -threads 16
+```
+
+```bash cosDPR-distil (flat)
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchFlatDenseVectors \
+  -index msmarco-v1-passage.cos-dpr-distil.flat \
+  -topics msmarco-v1-passage.dev \
+  -encoder CosDprDistil \
+  -output run.flat-dpr.txt \
+  -threads 16
+```
+</CodeGroup>
+
+### When to Use Flat vs HNSW
+
+| Use Case | Recommended Index |
+|----------|------------------|
+| Small collections (under 100K docs) | Flat (fast enough) |
+| Need 100% recall | Flat (exact search) |
+| Large collections (over 1M docs) | HNSW (much faster) |
+| Production retrieval | HNSW (good recall/speed tradeoff) |
+| Research/baselines | Both (validate HNSW against flat) |
+
+## Int8 Quantization
+
+Quantizing vectors to 8-bit integers reduces index size by ~4x with minimal quality loss.
+
+<Tabs>
+  <Tab title="HNSW + Int8">
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.hnsw-int8 \
+  -topics msmarco-v1-passage.dev \
+  -encoder BgeBaseEn15 \
+  -output run.bge-int8.txt \
+  -efSearch 1000
+```
+
+**MRR@10 = 0.3571** (vs 0.3575 full precision)
+
+Only 0.11% drop in effectiveness with 4x smaller index!
+  </Tab>
+  
+  <Tab title="Flat + Int8">
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchFlatDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.flat-int8 \
+  -topics msmarco-v1-passage.dev \
+  -encoder BgeBaseEn15 \
+  -output run.flat-int8.txt \
+  -threads 16
+```
+  </Tab>
+</Tabs>
+
+## Query Encoding
+
+Anserini supports on-the-fly query encoding with various embedding models:
+
+### Pre-encoded vs On-the-fly
+
+<CodeGroup>
+```bash Pre-encoded queries
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.hnsw \
+  -topics msmarco-v1-passage.dev \
+  -topicReader JsonIntVector \
+  -topicField vector \
+  -output run.txt
+```
+
+```bash On-the-fly encoding
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.hnsw \
+  -topics msmarco-v1-passage.dev \
+  -encoder BgeBaseEn15 \
+  -output run.txt
+```
+</CodeGroup>
+
+<Note>
+Pre-encoded queries (as JSON vectors) are faster for batch evaluation. On-the-fly encoding is better for interactive applications and when query vectors aren't pre-computed.
+</Note>
+
+## Supported Encoders
+
+Anserini includes several pre-trained encoders:
+
+| Encoder Class | Model | Dimensions |
+|---------------|-------|------------|
+| `BgeBaseEn15` | BAAI/bge-base-en-v1.5 | 768 |
+| `CosDprDistil` | castorini/cos-dpr-distil | 768 |
+| `OpenAiAda2` | text-embedding-ada-002 | 1536 |
+| `CohereEmbedEnglishV3` | embed-english-v3.0 | 1024 |
+
+Encoders are loaded via reflection from `io.anserini.encoder.dense.*` packages.
+
+## Performance Comparison
+
+### MS MARCO Passage Ranking (Dev Set)
+
+| Model | Index Type | Precision | MRR@10 |
+|-------|-----------|----------|--------|
+| BGE-base-en-v1.5 | HNSW | full | **0.3575** |
+| BGE-base-en-v1.5 | HNSW | int8 | 0.3571 |
+| BGE-base-en-v1.5 | Flat | full | 0.3575 |
+| cosDPR-distil | HNSW | full | **0.3889** |
+| cosDPR-distil | HNSW | int8 | 0.3874 |
+| Cohere v3.0 | HNSW | full | **0.3651** |
+| OpenAI Ada2 | HNSW | full | 0.3439 |
+
+<Note>
+Dense retrieval significantly outperforms traditional BM25 (MRR@10 = 0.1840) but is generally weaker than learned sparse methods like SPLADE-v3 (MRR@10 = 0.4000). Hybrid approaches combining both often work best.
+</Note>
+
+## Implementation Details
+
+From source code analysis:
+
+### HNSW Search Flow
+
+1. **Initialize** (`SearchHnswDenseVectors.java:81-134`)
+   - Load HNSW index from disk
+   - Read topics and extract query text/vectors
+   - Initialize encoder if needed
+
+2. **Batch Search** (`SearchHnswDenseVectors.java:144`)
+   - Encode queries (if not pre-encoded)
+   - Perform parallel HNSW search across threads
+   - Collect top-k results per query
+
+3. **Output** (`SearchHnswDenseVectors.java:146-160`)
+   - Write results in TREC or MS MARCO format
+   - Support for reranker request generation
+
+### Flat Search Flow
+
+Similar to HNSW but uses brute-force k-NN (`SearchFlatDenseVectors.java:49-205`). The API is intentionally identical for easy swapping.
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="OutOfMemoryError with large indexes">
+    Increase JVM heap: `-Xmx16g` for loading large vector indexes
+    
+    ```bash
+    java -Xmx16g -cp anserini-1.6.0-fatjar.jar \
+      io.anserini.search.SearchHnswDenseVectors ...
+    ```
+  </Accordion>
+  
+  <Accordion title="Slow HNSW search">
+    Try:
+    - Reduce `-efSearch` for faster (less accurate) search
+    - Increase `-threads` for parallel execution
+    - Use int8 quantized index for smaller memory footprint
+  </Accordion>
+  
+  <Accordion title="Encoder not found">
+    Ensure the encoder class name is exact (case-sensitive). Available encoders are in `io.anserini.encoder.dense.*` package.
+  </Accordion>
+</AccordionGroup>

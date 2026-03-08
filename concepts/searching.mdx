@@ -1,0 +1,466 @@
+---
+title: Search Concepts
+description: Understanding query processing, scoring functions, BM25, and ranking in Anserini
+---
+
+## What is Search?
+
+Search (or retrieval) is the process of taking a query and returning a ranked list of documents from an index. The challenge is **ranking** - determining which documents are most relevant to the query.
+
+<Note>
+Good ranking is essential: if relevant documents don't appear in the top results, users won't find what they need.
+</Note>
+
+## The Search Pipeline
+
+Search in Anserini follows this flow:
+
+1. **Query analysis**: Tokenize and process the query text
+2. **Query generation**: Build Lucene query objects
+3. **Scoring**: Compute relevance scores using a similarity function
+4. **Ranking**: Sort documents by score  
+5. **Return top-k**: Return the k highest-scoring documents
+
+## Query Processing
+
+Before searching, queries undergo the same analysis as documents during indexing.
+
+### Query Analysis
+
+Given query: `"Running shoes for marathon training"`
+
+After analysis:
+```
+Tokens: ["run", "shoe", "marathon", "train"]
+```
+
+The analyzer:
+- Tokenizes into words
+- Lowercases terms
+- Removes stopwords ("for")
+- Applies stemming ("running" → "run")
+
+<Info>
+Using the same analyzer for indexing and searching is crucial - otherwise terms won't match!
+</Info>
+
+### Query Generators
+
+A **query generator** transforms query text into Lucene Query objects. Anserini provides several:
+
+#### BagOfWordsQueryGenerator (Default)
+
+Creates a disjunction (OR) of query terms:
+
+```java
+public class BagOfWordsQueryGenerator extends QueryGenerator {
+  @Override
+  public Query buildQuery(String queryText) {
+    // "neural ranking" becomes: neural OR ranking
+    BooleanQuery.Builder builder = new BooleanQuery.Builder();
+    
+    for (String token : analyze(queryText)) {
+      builder.add(new TermQuery(new Term("contents", token)), 
+                  BooleanClause.Occur.SHOULD);
+    }
+    
+    return builder.build();
+  }
+}
+```
+
+Documents matching any query term receive a score.
+
+#### SdmQueryGenerator
+
+Implements **Sequential Dependence Model** - considers term proximity:
+
+```bash
+bin/run.sh io.anserini.search.SearchCollection \
+  -index indexes/msmarco-passage \
+  -topics topics.msmarco-passage.dev.txt \
+  -generator SdmQueryGenerator \
+  -output runs/run.msmarco.sdm.txt
+```
+
+SDM combines:
+- Single term matches ("neural", "ranking")
+- Ordered bigrams ("neural ranking")
+- Unordered window matches ("neural" near "ranking")
+
+More effective than bag-of-words, but slower.
+
+#### PhraseQueryGenerator
+
+Requires exact phrase matches:
+
+```java
+// Query: "neural ranking"
+// Only matches documents with exact phrase "neural ranking"
+PhraseQuery query = new PhraseQuery("contents", "neural", "ranking");
+```
+
+Very precise but may miss relevant documents with reordered terms.
+
+## Scoring Functions
+
+A **scoring function** (or **similarity function**) computes relevance scores. Anserini supports multiple models.
+
+### BM25 (Best Match 25)
+
+BM25 is the most popular scoring function and the default in Elasticsearch.
+
+#### The BM25 Formula
+
+For a query Q and document D:
+
+```
+BM25(D, Q) = Σ IDF(qi) × (f(qi,D) × (k1 + 1)) / (f(qi,D) + k1 × (1 - b + b × |D|/avgdl))
+```
+
+Where:
+- **f(qi,D)**: Term frequency of qi in document D
+- **|D|**: Length of document D
+- **avgdl**: Average document length  
+- **IDF(qi)**: Inverse document frequency (how rare is the term?)
+- **k1**: Term frequency saturation parameter (default: 0.9)
+- **b**: Length normalization parameter (default: 0.4)
+
+#### BM25 Intuition
+
+**Term frequency**: More occurrences of query terms → higher score
+- But with diminishing returns (saturation)
+
+**Document length**: Longer documents have more terms
+- Normalize to avoid biasing toward long documents
+
+**Inverse document frequency**: Rare terms are more informative
+- "neural" is more informative than "the"
+
+#### Using BM25 in Anserini
+
+```bash
+bin/run.sh io.anserini.search.SearchCollection \
+  -index indexes/msmarco-passage \
+  -topics topics.msmarco-passage.dev.txt \
+  -output runs/run.msmarco.bm25.txt \
+  -bm25 -bm25.k1 0.82 -bm25.b 0.68
+```
+
+Tuned parameters for MS MARCO:
+- **k1=0.82**: Slightly lower saturation
+- **b=0.68**: More length normalization
+
+<Accordion title="BM25 Implementation in Anserini">
+
+Anserini provides two BM25 implementations:
+
+**Standard BM25Similarity** (Lucene default):
+```java
+import org.apache.lucene.search.similarities.BM25Similarity;
+
+searcher.setSimilarity(new BM25Similarity(0.9f, 0.4f));
+```
+
+Uses approximate document lengths via norms (1 byte encoding).
+
+**AccurateBM25Similarity** (Anserini custom):
+```bash
+-bm25.accurate
+```
+
+```java
+import io.anserini.search.similarity.AccurateBM25Similarity;
+
+searcher.setSimilarity(new AccurateBM25Similarity(0.9f, 0.4f));
+```
+
+Computes exact document lengths - more accurate but slower.
+
+</Accordion>
+
+### Language Models
+
+#### Query Likelihood with Dirichlet Smoothing
+
+```bash
+-qld -qld.mu 1000
+```
+
+Models documents as language models and scores by query likelihood:
+
+```
+P(Q|D) = Π P(qi|D)
+```
+
+Dirichlet smoothing prevents zero probabilities:
+
+```
+P(w|D) = (c(w,D) + μ × P(w|C)) / (|D| + μ)
+```
+
+Where μ (mu) controls smoothing strength (default: 1000).
+
+#### Jelinek-Mercer Smoothing
+
+```bash
+-qljm -qljm.lambda 0.1  
+```
+
+Linear interpolation between document and collection models:
+
+```
+P(w|D) = λ × P(w|D) + (1-λ) × P(w|C)
+```
+
+### Other Similarity Functions
+
+#### DFR (Divergence From Randomness)
+
+```bash
+-dfr -dfr.c 7.0
+```
+
+Based on information theory - models term occurrence as deviation from random distribution.
+
+#### Axiomatic Models
+
+```bash
+-f2exp -f2exp.s 0.35
+-f2log -f2log.s 0.35
+```
+
+Derived from axiomatic constraints on retrieval functions.
+
+## Ranking and Top-k Retrieval
+
+### Top-k Retrieval
+
+Retrieval systems return the **top-k** highest-scoring documents:
+
+```bash
+-hits 1000  # Return top 1000 documents per query
+```
+
+Anserini uses efficient heap-based retrieval - doesn't need to score all documents.
+
+### Tie Breaking
+
+When documents have identical scores, Anserini breaks ties:
+
+**For string docids** (most collections):
+```java
+public static final Sort BREAK_SCORE_TIES_BY_DOCID =
+    new Sort(SortField.FIELD_SCORE, 
+             new SortField(Constants.ID, SortField.Type.STRING_VAL));
+```
+
+Lexicographic order: "doc100" < "doc99"
+
+**For tweet IDs** (numeric):
+```java
+public static final Sort BREAK_SCORE_TIES_BY_TWEETID =
+    new Sort(SortField.FIELD_SCORE,
+             new SortField("id_long", SortField.Type.LONG, true));
+```
+
+Reverse chronological: newer tweets first.
+
+## Dense vs Sparse Retrieval
+
+### Sparse Retrieval (Lexical Matching)
+
+Traditional IR uses **sparse vectors** - most dimensions are zero:
+
+```
+Document: "information retrieval systems"
+Vector: [0, 0, ..., 1, 0, ..., 0, 1, 0, ..., 1, ...]
+         (only 3 non-zero out of millions)
+```
+
+**Characteristics**:
+- ✅ Exact term matching
+- ✅ Efficient with inverted indexes  
+- ✅ Interpretable (can see matched terms)
+- ❌ Vocabulary mismatch problem
+
+BM25, language models, and TF-IDF are sparse retrieval methods.
+
+### Dense Retrieval (Semantic Matching)
+
+Neural IR uses **dense vectors** - embeddings from models like BERT:
+
+```
+Document: "information retrieval systems"
+Vector: [0.23, -0.45, 0.67, ..., 0.12]  
+        (768 dimensions, all non-zero)
+```
+
+**Characteristics**:
+- ✅ Semantic matching ("car" matches "automobile")  
+- ✅ Handles paraphrasing
+- ❌ Requires neural inference
+- ❌ More memory and compute
+- ❌ Less interpretable
+
+Anserini supports dense retrieval through:
+- Pre-computed vectors with `DenseVectorDocumentGenerator`
+- HNSW indexes for approximate nearest neighbor search
+
+```bash
+# Index dense vectors
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonDenseVectorCollection \
+  -generator DenseVectorDocumentGenerator \
+  -input vectors/ -index indexes/dense
+
+# Search with dense vectors  
+bin/run.sh io.anserini.search.HnswDenseSearcher \
+  -index indexes/dense \
+  -topics topics.vectors.txt \
+  -output runs/run.dense.txt
+```
+
+### Hybrid Retrieval
+
+Combining sparse and dense retrieval often works best:
+
+```bash
+# 1. Sparse retrieval (BM25)
+# 2. Dense retrieval (neural)
+# 3. Fusion (combine rankings)
+```
+
+Strategies:
+- **Linear combination**: score = α × BM25 + (1-α) × Dense
+- **Rank fusion**: Combine ranked lists (Reciprocal Rank Fusion)
+- **Reranking**: BM25 retrieval → neural reranking
+
+## Search Performance
+
+### Parallelism
+
+```bash
+-parallelism 4  # Use 4 threads for search
+```
+
+Each thread processes queries independently. More threads = faster search.
+
+### Typical Performance
+
+MS MARCO passage (8.8M passages, 6980 queries):
+- **Hardware**: MacBook Air M2, 24GB
+- **Threads**: 4  
+- **Time**: ~2 minutes
+- **Throughput**: ~60 queries/second
+
+### Batch vs Interactive Search
+
+Anserini focuses on **batch retrieval** - processing many queries:
+
+```bash
+# topics.txt contains 6980 queries
+bin/run.sh io.anserini.search.SearchCollection \
+  -topics topics.txt ...
+```
+
+For **interactive search** (single queries), use `SimpleSearcher`:
+
+```java
+import io.anserini.search.SimpleSearcher;
+
+SimpleSearcher searcher = new SimpleSearcher("indexes/msmarco");
+Searcher.Result[] hits = searcher.search("what is quantum computing", 10);
+
+for (int i = 0; i < hits.length; i++) {
+  System.out.printf("%d. %s (score=%.4f)\n", 
+                    i+1, hits[i].docid, hits[i].score);
+}
+```
+
+## Advanced Query Techniques
+
+### Query Expansion
+
+Expand queries with related terms:
+
+```bash
+# Pseudo-relevance feedback with RM3
+-rm3 -rm3.fbTerms 10 -rm3.fbDocs 10
+```
+
+RM3 (Relevance Model 3):
+1. Retrieve top-k documents (e.g., k=10)
+2. Extract top-m terms from those documents (e.g., m=10)  
+3. Reweight original query with expanded terms
+
+### Rocchio Feedback
+
+```bash
+-rocchio -rocchio.alpha 0.5 -rocchio.beta 0.5
+```
+
+Vector-based query expansion:
+```
+Q_new = α × Q_original + β × (1/|R|) × Σ D_relevant
+```
+
+### Impact Scores
+
+For learned sparse retrieval (e.g., SPLADE):
+
+```bash
+-impact
+```
+
+Uses precomputed term importance weights instead of standard term frequencies.
+
+## Output Formats
+
+### TREC Format
+
+```bash
+-format trec
+```
+
+```
+qid Q0 docid rank score run_id
+1   Q0 doc1   1    10.5  bm25
+1   Q0 doc5   2    9.8   bm25  
+```
+
+Standard format for TREC evaluations.
+
+### MS MARCO Format  
+
+```bash
+-format msmarco
+```
+
+```
+qid docid rank
+1   doc1  1
+1   doc5  2
+```
+
+Compact format for MS MARCO leaderboard submissions.
+
+## Best Practices
+
+<Accordion title="Search Configuration Tips">
+
+1. **Start with BM25** - excellent baseline, hard to beat on many tasks
+2. **Tune parameters** on validation data (k1, b, mu) for your specific collection  
+3. **Use the right query generator** - SDM for short queries, BoW for longer queries
+4. **Enable RM3** for improved recall on informational queries
+5. **Parallelize search** with `-parallelism` to process queries faster
+6. **Choose output format** based on evaluation tools (TREC vs MS MARCO)
+7. **Consider hybrid retrieval** - combine sparse and dense for best results
+
+</Accordion>
+
+## Next Steps
+
+Now that you understand searching, learn about:
+- [Evaluation](/concepts/evaluation) - Measuring and improving retrieval quality
+- [Information Retrieval](/concepts/information-retrieval) - Core IR concepts and metrics

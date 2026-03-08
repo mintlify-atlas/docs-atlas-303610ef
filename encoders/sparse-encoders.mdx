@@ -1,0 +1,455 @@
+---
+title: Sparse Encoders
+description: Sparse encoder implementations for learned sparse retrieval in Anserini
+---
+
+# Sparse Encoders
+
+Sparse encoders in Anserini generate high-dimensional vectors with mostly zero values, representing learned term importance weights. Unlike dense encoders that produce compact embeddings, sparse encoders create vocabulary-sized representations compatible with inverted index structures.
+
+All sparse encoders extend the `SparseEncoder` base class and use [ONNX Runtime](/encoders/onnx) for efficient inference.
+
+## What Are Learned Sparse Representations?
+
+Learned sparse representations combine the benefits of:
+
+<CardGroup cols={2}>
+  <Card title="Traditional Lexical Matching" icon="magnifying-glass">
+    Exact term matching and interpretability through explicit term weights
+  </Card>
+  <Card title="Neural Semantic Understanding" icon="brain">
+    Learned query/document expansion and contextualized term importance
+  </Card>
+</CardGroup>
+
+These models produce sparse vectors where:
+- **Dimensions** correspond to vocabulary tokens
+- **Values** represent learned importance weights
+- **Non-zero entries** indicate relevant terms (including expanded terms not in original text)
+
+## Base Architecture
+
+Sparse encoders in Anserini (`io.anserini.encoder.sparse.SparseEncoder`) share common characteristics:
+
+- Extend `OnnxEncoder<Map<String, Integer>>` - return token-to-weight maps
+- Use BERT tokenization with vocabulary files
+- Quantize float weights to integers for efficient indexing
+- Support flattening to bag-of-words representation
+
+### Weight Quantization
+
+Sparse encoders quantize continuous float weights to discrete integers:
+
+```java
+public Map<String, Integer> quantizeFloatWeights(Map<String, Float> tokenFloatWeights) {
+    Map<String, Integer> tokenIntWeights = new HashMap<>();
+    tokenFloatWeights.forEach((token, weight) -> 
+        tokenIntWeights.put(token, Math.round(weight / weightRange * quantRange))
+    );
+    return tokenIntWeights;
+}
+```
+
+See: `src/main/java/io/anserini/encoder/sparse/SparseEncoder.java:58`
+
+### Flattening for Indexing
+
+Quantized weights are flattened into repeated tokens for inverted index compatibility:
+
+```java
+public static String flatten(Map<String, Integer> intWeights) {
+    List<String> tokens = new ArrayList<>();
+    for (Map.Entry<String, Integer> entry : intWeights.entrySet()) {
+        String token = entry.getKey();
+        int weight = entry.getValue();
+        for (int i = 0; i < weight; i++) {
+            tokens.add(token);
+        }
+    }
+    return String.join(" ", tokens);
+}
+```
+
+See: `src/main/java/io/anserini/encoder/sparse/SparseEncoder.java:35`
+
+**Example**: `{"neural": 3, "retrieval": 2}` → `"neural neural neural retrieval retrieval"`
+
+## Available Encoders
+
+### SPLADE Encoders
+
+SPLADE (SParse Lexical AnD Expansion) models use a log-saturation activation function and max-pooling to generate sparse representations.
+
+#### SpladeEncoder Base Class
+
+All SPLADE variants share common encoding logic:
+
+- **Weight Range**: 5
+- **Quantization Range**: 256
+- **Max Sequence Length**: 512 tokens
+- **Model Inputs**: `input_ids`, `token_type_ids`, `attention_mask`
+- **Model Outputs**: `output_idx` (token indices), `output_weights` (importance weights)
+
+See: `src/main/java/io/anserini/encoder/sparse/SpladeEncoder.java:33`
+
+---
+
+### SpladeV3Encoder
+
+**SPLADE v3** - The third iteration of SPLADE models with improved efficiency and effectiveness.
+
+<Accordion title="Model Details">
+  - **Hugging Face**: `naver/splade-v3`
+  - **ONNX Model**: `splade-v3-optimized.onnx`
+  - **Weight Range**: 5 (quantized to 0-256)
+  - **Max Sequence Length**: 512 tokens
+  - **Average Non-zero Terms**: ~120-150 per query
+</Accordion>
+
+#### Usage
+
+```java
+import io.anserini.encoder.sparse.SpladeV3Encoder;
+import ai.onnxruntime.OrtException;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.util.Map;
+
+try (SpladeV3Encoder encoder = new SpladeV3Encoder()) {
+    String query = "What is information retrieval?";
+    
+    // Get quantized integer weights
+    Map<String, Integer> weights = encoder.encode(query);
+    
+    // Example output:
+    // {"information": 45, "retrieval": 38, "search": 22, "document": 18, ...}
+    
+    for (Map.Entry<String, Integer> entry : weights.entrySet()) {
+        System.out.println(entry.getKey() + ": " + entry.getValue());
+    }
+    
+    // Flatten for indexing
+    String flattened = SpladeV3Encoder.flatten(weights);
+    System.out.println("Flattened: " + flattened);
+} catch (IOException | OrtException | URISyntaxException e) {
+    e.printStackTrace();
+}
+```
+
+See: `src/main/java/io/anserini/encoder/sparse/SpladeV3Encoder.java:24`
+
+<Note>
+SPLADE models automatically expand queries with related terms. For example, a query about "ML" might include weights for "machine", "learning", "algorithm", "neural", etc.
+</Note>
+
+---
+
+### SpladePlusPlusEnsembleDistilEncoder
+
+**SPLADE++ Ensemble Distil** - An improved SPLADE variant trained with ensemble distillation for better effectiveness.
+
+<Accordion title="Model Details">
+  - **Hugging Face**: `naver/splade-cocondenser-ensembledistil`
+  - **ONNX Model**: `splade-pp-ed-optimized.onnx`
+  - **Training**: Distilled from ensemble of models
+  - **Performance**: Higher retrieval quality than SPLADE v3
+  - **Average Non-zero Terms**: ~140-180 per query
+</Accordion>
+
+#### Usage
+
+```java
+import io.anserini.encoder.sparse.SpladePlusPlusEnsembleDistilEncoder;
+
+try (SpladePlusPlusEnsembleDistilEncoder encoder = 
+        new SpladePlusPlusEnsembleDistilEncoder()) {
+    String query = "deep learning neural networks";
+    Map<String, Integer> weights = encoder.encode(query);
+    
+    // SPLADE++ typically produces more nuanced term weights
+    // with better discrimination between important and less important terms
+    weights.forEach((token, weight) -> 
+        System.out.println(token + ": " + weight)
+    );
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+See: `src/main/java/io/anserini/encoder/sparse/SpladePlusPlusEnsembleDistilEncoder.java:24`
+
+---
+
+### SpladePlusPlusSelfDistilEncoder
+
+**SPLADE++ Self Distil** - A SPLADE++ variant trained with self-distillation for efficiency.
+
+<Accordion title="Model Details">
+  - **Hugging Face**: SPLADE++ self-distilled variant
+  - **ONNX Model**: `splade-pp-sd-optimized.onnx`
+  - **Training**: Self-distillation from same architecture
+  - **Efficiency**: Faster inference than ensemble distil variant
+  - **Average Non-zero Terms**: ~130-160 per query
+</Accordion>
+
+#### Usage
+
+```java
+import io.anserini.encoder.sparse.SpladePlusPlusSelfDistilEncoder;
+
+try (SpladePlusPlusSelfDistilEncoder encoder = 
+        new SpladePlusPlusSelfDistilEncoder()) {
+    String query = "transformer attention mechanism";
+    Map<String, Integer> weights = encoder.encode(query);
+    
+    System.out.println("Number of expanded terms: " + weights.size());
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+See: `src/main/java/io/anserini/encoder/sparse/SpladePlusPlusSelfDistilEncoder.java:24`
+
+---
+
+### UniCoilEncoder
+
+**UniCoil** - A simpler sparse encoding approach that weights existing tokens without vocabulary-level expansion.
+
+<Accordion title="Model Details">
+  - **Model**: UniCoil encoder
+  - **ONNX Model**: `unicoil.onnx`
+  - **Weight Range**: 5 (quantized to 0-256)
+  - **Key Difference**: Weights only query tokens (no vocab-level expansion)
+  - **Average Non-zero Terms**: Same as query length (~5-15)
+</Accordion>
+
+#### Usage
+
+```java
+import io.anserini.encoder.sparse.UniCoilEncoder;
+
+try (UniCoilEncoder encoder = new UniCoilEncoder()) {
+    String query = "neural information retrieval";
+    Map<String, Integer> weights = encoder.encode(query);
+    
+    // UniCoil only weights tokens present in the query
+    // No vocabulary-level expansion like SPLADE
+    System.out.println("Weighted tokens: " + weights.keySet());
+    // Output: [neural, information, retrieval] (plus subword tokens)
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+See: `src/main/java/io/anserini/encoder/sparse/UniCoilEncoder.java:32`
+
+<Warning>
+UniCoil does not perform query expansion - it only reweights existing query terms. Use SPLADE variants for expansion capabilities.
+</Warning>
+
+---
+
+## Encoder Comparison
+
+<AccordionGroup>
+  <Accordion title="Model Characteristics">
+    | Encoder | Expansion | Avg Terms | Training Approach | Speed |
+    |---------|-----------|-----------|-------------------|-------|
+    | **SpladeV3** | Yes | ~120-150 | Standard | Fast |
+    | **SPLADE++ Ensemble Distil** | Yes | ~140-180 | Ensemble | Moderate |
+    | **SPLADE++ Self Distil** | Yes | ~130-160 | Self-distill | Fast |
+    | **UniCoil** | No | ~5-15 | Token weighting | Very Fast |
+  </Accordion>
+
+  <Accordion title="When to Use Each Encoder">
+    - **SpladeV3**: Balanced performance for general-purpose sparse retrieval
+    - **SPLADE++ Ensemble Distil**: When retrieval quality is critical and latency is acceptable
+    - **SPLADE++ Self Distil**: Good balance between quality and efficiency
+    - **UniCoil**: When query expansion is not needed or when extreme efficiency is required
+  </Accordion>
+
+  <Accordion title="Expansion Examples">
+    For query "ML algorithms":
+    
+    **SPLADE variants** might expand to:
+    ```
+    ml: 42, algorithms: 38, machine: 35, learning: 34, 
+    algorithm: 28, neural: 22, supervised: 18, classification: 15, ...
+    ```
+    
+    **UniCoil** would only weight:
+    ```
+    ml: 38, algorithms: 35
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Implementation Details
+
+### Constructor Pattern
+
+Sparse encoders specify weight and quantization ranges:
+
+```java
+public SpladeV3Encoder() throws IOException, OrtException, URISyntaxException {
+    super(MODEL_NAME, MODEL_URL, VOCAB_NAME, VOCAB_URL, CONFIG_URL);
+}
+
+// SpladeEncoder constructor
+protected SpladeEncoder(String modelName, String modelUrl,
+                        String vocabName, String vocabUrl, String configUrl) {
+    super(WEIGHT_RANGE, QUANT_RANGE, modelName, modelUrl, vocabName, vocabUrl, configUrl);
+}
+```
+
+### Encoding Process
+
+<Steps>
+  <Step title="Tokenization">
+    Text is tokenized using BERT WordPiece tokenizer with `[CLS]` and `[SEP]` tokens.
+  </Step>
+  <Step title="ONNX Inference">
+    Token IDs, attention masks, and token type IDs are passed through ONNX model.
+  </Step>
+  <Step title="Float Weight Extraction">
+    Model outputs token indices and continuous float weights.
+  </Step>
+  <Step title="Quantization">
+    Float weights are quantized to integers: `round(weight / weightRange * quantRange)`.
+  </Step>
+  <Step title="Filtering">
+    Special tokens (`[CLS]`, `[SEP]`, `[PAD]`) are removed from output.
+  </Step>
+</Steps>
+
+### SPLADE Encoding Details
+
+SPLADE models use a specialized ONNX export that includes post-processing:
+
+1. **ReLU activation**: `relu(logits)`
+2. **Log1p saturation**: `log(1 + relu(logits))`
+3. **Max pooling**: `max(log1p * attention_mask, dim=1)`
+4. **Sparsification**: Extract non-zero indices and values
+
+This logic is embedded in the ONNX model itself, outputting directly to `output_idx` and `output_weights`.
+
+See: `src/main/java/io/anserini/encoder/sparse/SpladeEncoder.java:50`
+
+## Practical Usage Patterns
+
+### Basic Query Encoding
+
+```java
+try (SpladeV3Encoder encoder = new SpladeV3Encoder()) {
+    String query = "machine learning";
+    Map<String, Integer> weights = encoder.encode(query);
+    
+    // Use weights for retrieval
+    processQuery(weights);
+}
+```
+
+### Batch Processing
+
+```java
+List<String> queries = Arrays.asList(
+    "information retrieval",
+    "neural networks",
+    "deep learning"
+);
+
+try (SpladeV3Encoder encoder = new SpladeV3Encoder()) {
+    for (String query : queries) {
+        Map<String, Integer> weights = encoder.encode(query);
+        indexQuery(query, weights);
+    }
+}
+```
+
+### Flattening for Inverted Index
+
+```java
+try (SpladeV3Encoder encoder = new SpladeV3Encoder()) {
+    String query = "transformer models";
+    Map<String, Integer> weights = encoder.encode(query);
+    
+    // Convert to repeated token representation for indexing
+    String flattened = SpladeV3Encoder.flatten(weights);
+    
+    // Index the flattened representation
+    indexDocument(documentId, flattened);
+}
+```
+
+## Resource Management
+
+<Warning>
+Sparse encoders maintain ONNX Runtime sessions that must be properly closed:
+</Warning>
+
+```java
+// Correct: try-with-resources
+try (SpladeV3Encoder encoder = new SpladeV3Encoder()) {
+    // Use encoder
+} // Automatically closed
+
+// Also correct: explicit close
+SpladeV3Encoder encoder = new SpladeV3Encoder();
+try {
+    // Use encoder
+} finally {
+    encoder.close();
+}
+```
+
+## Model Caching
+
+Models and vocabularies are cached in `~/.cache/pyserini/encoders/`:
+
+```
+~/.cache/pyserini/encoders/
+├── splade-v3-optimized.onnx
+├── splade-v3-vocab.txt
+├── splade-pp-ed-optimized.onnx
+├── splade-pp-ed-vocab.txt
+├── splade-pp-sd-optimized.onnx
+├── splade-pp-sd-vocab.txt
+├── unicoil.onnx
+└── unicoil-vocab.txt
+```
+
+## Performance Considerations
+
+<AccordionGroup>
+  <Accordion title="Memory Usage">
+    - SPLADE models produce 100-200 non-zero terms per query
+    - UniCoil produces only 5-20 terms (no expansion)
+    - Memory scales with number of non-zero terms, not vocabulary size
+  </Accordion>
+
+  <Accordion title="Inference Speed">
+    - UniCoil: ~0.5-1ms per query
+    - SPLADE variants: ~2-5ms per query
+    - First encoding includes model loading (100-500ms)
+    - Subsequent encodings use cached model
+  </Accordion>
+
+  <Accordion title="Index Size">
+    - Sparse encoders increase index size due to term expansion
+    - SPLADE: ~2-3x larger than BM25 index
+    - UniCoil: ~1.2-1.5x larger than BM25 index
+    - Use quantization to reduce index size
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dense Encoders" icon="circle-dot" href="/encoders/dense-encoders">
+    Compare with dense encoding approaches
+  </Card>
+  <Card title="ONNX Integration" icon="gear" href="/encoders/onnx">
+    Learn about ONNX model optimization
+  </Card>
+</CardGroup>

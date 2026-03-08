@@ -1,0 +1,293 @@
+---
+title: 'Installation'
+description: 'Build Anserini from source for development and experimentation'
+---
+
+This guide covers building Anserini from source. If you just want to use Anserini for search, see the [Quickstart](/quickstart) guide which uses the prebuilt fatjar.
+
+<Note>
+Most Anserini features are also exposed through [Pyserini](http://pyserini.io/), a Python interface. If you're more comfortable with Python, start there—although Anserini forms an important building block of Pyserini.
+</Note>
+
+## System Requirements
+
+<Steps>
+  <Step title="Java 21">
+    Anserini requires **Java 21** (exactly this version).
+    
+    <CodeGroup>
+    ```bash Check Version
+    java -version
+    # Should show version 21.x.x
+    ```
+    
+    ```bash macOS (Homebrew)
+    brew install openjdk@21
+    ```
+    
+    ```bash Ubuntu/Debian
+    sudo apt update
+    sudo apt install openjdk-21-jdk
+    ```
+    
+    ```bash RHEL/CentOS/Fedora
+    sudo dnf install java-21-openjdk-devel
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Maven 3.9+">
+    You need Maven 3.9 or higher to build Anserini.
+    
+    <CodeGroup>
+    ```bash Check Version
+    mvn -version
+    # Should show Apache Maven 3.9.x or higher
+    ```
+    
+    ```bash macOS (Homebrew)
+    brew install maven
+    ```
+    
+    ```bash Ubuntu/Debian
+    sudo apt install maven
+    ```
+    
+    ```bash Download Manually
+    wget https://dlcdn.apache.org/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz
+    tar xzvf apache-maven-3.9.6-bin.tar.gz
+    export PATH=$PATH:$(pwd)/apache-maven-3.9.6/bin
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Building from Source
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone Anserini with the `--recurse-submodules` option to include the evaluation tools:
+    
+    ```bash
+    git clone --recurse-submodules https://github.com/castorini/anserini.git
+    cd anserini
+    ```
+    
+    <Note>
+    If you've already cloned without submodules, run:
+    ```bash
+    git submodule update --init --recursive
+    ```
+    </Note>
+    
+    The `tools/` directory is a Git submodule containing evaluation scripts and other utilities shared across related projects.
+  </Step>
+  
+  <Step title="Build with Maven">
+    Build the project using Maven:
+    
+    ```bash
+    mvn clean package
+    ```
+    
+    This command:
+    - Compiles all Java source files
+    - Runs the complete test suite
+    - Creates both a thin jar and a fatjar in `target/`
+    - Generates Javadoc documentation
+    
+    <Note>
+    The build process includes running all tests, which can take 10-20 minutes. The fatjar will be located at `target/anserini-{version}-fatjar.jar`.
+    </Note>
+  </Step>
+</Steps>
+
+## Building Evaluation Tools
+
+Anserini includes standard IR evaluation tools. Build them separately:
+
+<Steps>
+  <Step title="Build trec_eval">
+    ```bash
+    cd tools/eval && tar xvfz trec_eval.9.0.4.tar.gz && cd trec_eval.9.0.4 && make && cd ../../..
+    ```
+    
+    This builds the standard TREC evaluation tool for computing IR metrics.
+  </Step>
+  
+  <Step title="Build ndeval">
+    ```bash
+    cd tools/eval/ndeval && make && cd ../../..
+    ```
+    
+    This builds the normalized discounted cumulative gain (NDCG) evaluation tool.
+  </Step>
+</Steps>
+
+<Note>
+You may see compiler warnings during the build—these are okay to ignore.
+</Note>
+
+## Verify Installation
+
+Test your installation by running a simple command:
+
+```bash
+target/appassembler/bin/IndexCollection -h
+```
+
+You should see the help message for the `IndexCollection` tool.
+
+Alternatively, use the convenience script:
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection -h
+```
+
+## Windows Setup
+
+<Warning>
+If you are using Windows, you **must** use WSL2 (Windows Subsystem for Linux) to build Anserini.
+</Warning>
+
+### Install WSL2
+
+<Steps>
+  <Step title="Enable WSL2">
+    Follow the [official WSL2 installation guide](https://learn.microsoft.com/en-us/windows/wsl/install):
+    
+    ```powershell
+    wsl --install
+    ```
+    
+    This installs Ubuntu by default. Restart your computer when prompted.
+  </Step>
+  
+  <Step title="Install Dependencies in WSL2">
+    Open your WSL2 terminal and install Java and Maven:
+    
+    ```bash
+    sudo apt update
+    sudo apt install openjdk-21-jdk maven git
+    ```
+  </Step>
+  
+  <Step title="Build Anserini">
+    Follow the standard build instructions above inside your WSL2 environment.
+  </Step>
+</Steps>
+
+### Known Windows Issues
+
+<Warning>
+Without WSL2, tests may fail due to encoding issues. See [issue #1466](https://github.com/castorini/anserini/issues/1466) for details.
+</Warning>
+
+**Workaround (not recommended):** Skip tests during the build:
+
+```bash
+mvn clean package -Dmaven.test.skip=true
+```
+
+For additional troubleshooting, see [Pyserini discussion #1121](https://github.com/castorini/pyserini/discussions/1121).
+
+## Fast Local Builds
+
+For rapid development iteration, use the quick build script that skips tests and documentation:
+
+```bash
+bin/qbuild.sh
+```
+
+This is much faster than `mvn clean package` but doesn't run the test suite.
+
+## Build Artifacts
+
+After a successful build, you'll find:
+
+- **Thin jar**: `target/anserini-{version}.jar` - requires classpath setup
+- **Fatjar**: `target/anserini-{version}-fatjar.jar` - self-contained with all dependencies
+- **App scripts**: `target/appassembler/bin/*` - convenience scripts for running tools
+- **Javadocs**: `target/site/apidocs/` - API documentation
+
+## Running Tools
+
+There are several ways to run Anserini tools after building:
+
+<CodeGroup>
+```bash Using Convenience Script
+bin/run.sh io.anserini.search.SearchCollection [args...]
+```
+
+```bash Using Fatjar
+java -cp target/anserini-{version}-fatjar.jar io.anserini.search.SearchCollection [args...]
+```
+
+```bash Using Appassembler Scripts
+target/appassembler/bin/SearchCollection [args...]
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Run your first search experiment
+  </Card>
+  
+  <Card title="Indexing" icon="database" href="/indexing">
+    Learn how to build indexes from corpora
+  </Card>
+  
+  <Card title="Regression Tests" icon="flask" href="/regressions">
+    Run end-to-end reproducibility experiments
+  </Card>
+  
+  <Card title="GitHub Repository" icon="github" href="https://github.com/castorini/anserini">
+    View source code and contribute
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Maven Build Fails
+
+1. **Check Java version**: Must be exactly Java 21
+   ```bash
+   java -version
+   ```
+
+2. **Check Maven version**: Must be 3.9 or higher
+   ```bash
+   mvn -version
+   ```
+
+3. **Clean previous builds**:
+   ```bash
+   mvn clean
+   rm -rf target/
+   ```
+
+### Submodule Issues
+
+If you see errors about missing files in `tools/`:
+
+```bash
+git submodule update --init --recursive
+```
+
+### Memory Issues During Build
+
+If the build runs out of memory, increase Maven's heap size:
+
+```bash
+export MAVEN_OPTS="-Xmx4g"
+mvn clean package
+```
+
+## Additional Resources
+
+- [GitHub Repository](https://github.com/castorini/anserini)
+- [Contributing Guide](https://github.com/castorini/anserini/blob/master/CONTRIBUTING.md)
+- [Pyserini](http://pyserini.io/) - Python interface
+- [Lucene 9.9.1 Documentation](https://lucene.apache.org/core/9_9_1/)

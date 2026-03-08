@@ -1,0 +1,504 @@
+---
+title: 'SearchCollection API'
+description: 'Main entry point for batch search operations with comprehensive ranking and query expansion options'
+---
+
+## Overview
+
+`SearchCollection` is the primary class for batch search operations in Anserini. It provides extensive configuration options for ranking models (BM25, Query Likelihood, etc.), query expansion (RM3, Rocchio, BM25-PRF), and specialized search modes (tweets, background linking).
+
+**Package**: `io.anserini.search`
+
+**Source**: `src/main/java/io/anserini/search/SearchCollection.java`
+
+## Constructor
+
+```java
+public SearchCollection(Args args) throws IOException
+```
+
+Initializes a SearchCollection instance with the provided arguments.
+
+<ParamField path="args" type="SearchCollection.Args" required>
+  Configuration object containing all search parameters
+</ParamField>
+
+## Args Class
+
+The `Args` class extends `BaseSearchArgs` and contains all configuration parameters for search operations.
+
+### Required Parameters
+
+<ParamField path="index" type="String" required>
+  Path to the Lucene index directory
+</ParamField>
+
+<ParamField path="topics" type="String[]" required>
+  Topics file(s) containing queries. Can specify multiple files or built-in topic names.
+</ParamField>
+
+<ParamField path="output" type="String" required>
+  Output file path for search results (TREC format by default)
+</ParamField>
+
+### Basic Search Parameters
+
+<ParamField path="hits" type="int" default="1000">
+  Maximum number of hits to return per query
+</ParamField>
+
+<ParamField path="threads" type="int" default="1">
+  Number of threads to use for search
+</ParamField>
+
+<ParamField path="parallelism" type="int" default="1">
+  Number of threads to use for each parameter configuration
+</ParamField>
+
+<ParamField path="topicField" type="String" default="title">
+  Which field of the query to use. Options: `title`, `description`, `narrative`, or combinations with `+` (e.g., `title+description`)
+</ParamField>
+
+<ParamField path="fields" type="String[]" default='[]'>
+  Fields to search with weights in format `field1=weight1 field2=weight2`
+</ParamField>
+
+<ParamField path="format" type="String" default="trec">
+  Output format. Options: `trec`, `msmarco`
+</ParamField>
+
+<ParamField path="runtag" type="String" default="Anserini">
+  Run tag for TREC output format
+</ParamField>
+
+### Ranking Models
+
+Exactly one ranking model must be selected (mutually exclusive).
+
+<ParamField path="bm25" type="boolean" default="false">
+  Use BM25 ranking model
+</ParamField>
+
+<ParamField path="bm25.k1" type="String[]" default='["0.9"]'>
+  BM25 k1 parameter (controls term saturation)
+</ParamField>
+
+<ParamField path="bm25.b" type="String[]" default='["0.4"]'>
+  BM25 b parameter (controls document length normalization)
+</ParamField>
+
+<ParamField path="bm25.accurate" type="boolean" default="false">
+  Use accurate BM25 with precise document lengths
+</ParamField>
+
+<ParamField path="bm25.querySide" type="boolean" default="false">
+  Apply query-side BM25 scoring
+</ParamField>
+
+<ParamField path="qld" type="boolean" default="false">
+  Use Query Likelihood with Dirichlet smoothing
+</ParamField>
+
+<ParamField path="qld.mu" type="String[]" default='["1000"]'>
+  Dirichlet smoothing parameter
+</ParamField>
+
+<ParamField path="qljm" type="boolean" default="false">
+  Use Query Likelihood with Jelinek-Mercer smoothing
+</ParamField>
+
+<ParamField path="qljm.lambda" type="String[]" default='["0.1"]'>
+  Jelinek-Mercer lambda parameter
+</ParamField>
+
+<ParamField path="impact" type="boolean" default="false">
+  Use impact scoring (sum of term frequencies)
+</ParamField>
+
+<ParamField path="inl2" type="boolean" default="false">
+  Use I(n)L2 DFR scoring model
+</ParamField>
+
+<ParamField path="spl" type="boolean" default="false">
+  Use SPL scoring model
+</ParamField>
+
+<ParamField path="f2exp" type="boolean" default="false">
+  Use F2Exp axiomatic scoring model
+</ParamField>
+
+<ParamField path="f2log" type="boolean" default="false">
+  Use F2Log axiomatic scoring model
+</ParamField>
+
+### Query Expansion
+
+#### RM3 (Relevance Model 3)
+
+<ParamField path="rm3" type="boolean" default="false">
+  Enable RM3 query expansion
+</ParamField>
+
+<ParamField path="rm3.fbTerms" type="String[]" default='[\"10\"]'>
+  Number of expansion terms
+</ParamField>
+
+<ParamField path="rm3.fbDocs" type="String[]" default='[\"10\"]'>
+  Number of feedback documents
+</ParamField>
+
+<ParamField path="rm3.originalQueryWeight" type="String[]" default='[\"0.5\"]'>
+  Weight assigned to original query (vs. expansion terms)
+</ParamField>
+
+<ParamField path="rm3.outputQuery" type="boolean" default="false">
+  Print original and expanded queries
+</ParamField>
+
+#### Rocchio
+
+<ParamField path="rocchio" type="boolean" default="false">
+  Enable Rocchio query expansion
+</ParamField>
+
+<ParamField path="rocchio.topFbTerms" type="String[]" default='[\"10\"]'>
+  Number of relevant expansion terms
+</ParamField>
+
+<ParamField path="rocchio.topFbDocs" type="String[]" default='[\"10\"]'>
+  Number of relevant expansion documents
+</ParamField>
+
+<ParamField path="rocchio.alpha" type="String[]" default='[\"1\"]'>
+  Weight for original query
+</ParamField>
+
+<ParamField path="rocchio.beta" type="String[]" default='[\"0.75\"]'>
+  Weight for relevant document vectors
+</ParamField>
+
+<ParamField path="rocchio.gamma" type="String[]" default='[\"0.15\"]'>
+  Weight for non-relevant document vectors
+</ParamField>
+
+<ParamField path="rocchio.useNegative" type="boolean" default="false">
+  Use negative feedback from non-relevant documents
+</ParamField>
+
+#### BM25-PRF
+
+<ParamField path="bm25prf" type="boolean" default="false">
+  Enable BM25 pseudo-relevance feedback
+</ParamField>
+
+<ParamField path="bm25prf.fbTerms" type="String[]" default='[\"20\"]'>
+  Number of expansion terms
+</ParamField>
+
+<ParamField path="bm25prf.fbDocs" type="String[]" default='[\"10\"]'>
+  Number of feedback documents
+</ParamField>
+
+<ParamField path="bm25prf.newTermWeight" type="String[]" default='[\"0.2\"]'>
+  Weight assigned to expansion terms
+</ParamField>
+
+#### Axiomatic Reranking
+
+<ParamField path="axiom" type="boolean" default="false">
+  Enable axiomatic semantic matching reranking
+</ParamField>
+
+<ParamField path="axiom.r" type="String[]" default='[\"20\"]'>
+  Top R documents to consider
+</ParamField>
+
+<ParamField path="axiom.n" type="String[]" default='[\"30\"]'>
+  Top N terms to select
+</ParamField>
+
+<ParamField path="axiom.beta" type="String[]" default='[\"0.4\"]'>
+  Beta parameter for term weight adjustment
+</ParamField>
+
+<ParamField path="axiom.top" type="String[]" default='[\"20\"]'>
+  Number of top terms from expansion pool
+</ParamField>
+
+<ParamField path="axiom.deterministic" type="boolean" default="false">
+  Make expansion deterministic
+</ParamField>
+
+### Sequential Dependence Model (SDM)
+
+<ParamField path="sdm" type="boolean" default="false">
+  Enable Sequential Dependence Model queries
+</ParamField>
+
+<ParamField path="sdm.tw" type="float" default="0.85">
+  Term weight in SDM
+</ParamField>
+
+<ParamField path="sdm.ow" type="float" default="0.1">
+  Ordered window weight in SDM
+</ParamField>
+
+<ParamField path="sdm.uw" type="float" default="0.05">
+  Unordered window weight in SDM
+</ParamField>
+
+### Analysis and Processing
+
+<ParamField path="language" type="String" default="en">
+  Analyzer language. Supports: `ar`, `bn`, `zh`, `da`, `nl`, `en`, `fi`, `fr`, `de`, `hi`, `hu`, `id`, `it`, `ja`, `ko`, `no`, `pt`, `ru`, `es`, `sv`, `te`, `th`, `tr`, `uk`
+</ParamField>
+
+<ParamField path="stemmer" type="String" default="porter">
+  Stemmer to use. Options: `porter`, `krovetz`, `none`
+</ParamField>
+
+<ParamField path="keepStopwords" type="boolean" default="false">
+  Keep stopwords in queries
+</ParamField>
+
+<ParamField path="stopwords" type="String">
+  Path to custom stopwords file
+</ParamField>
+
+<ParamField path="pretokenized" type="boolean" default="false">
+  Accept pre-tokenized JSONL input
+</ParamField>
+
+<ParamField path="analyzeWithHuggingFaceTokenizer" type="String">
+  Use HuggingFace tokenizer for analysis
+</ParamField>
+
+### Specialized Search Modes
+
+<ParamField path="searchTweets" type="boolean" default="false">
+  Search against tweet index with temporal filtering
+</ParamField>
+
+<ParamField path="backgroundLinking" type="boolean" default="false">
+  TREC News Track background linking task mode
+</ParamField>
+
+<ParamField path="backgroundLinking.k" type="int" default="10">
+  Number of terms to extract from query document (ranked by tf-idf)
+</ParamField>
+
+<ParamField path="backgroundLinking.dateFilter" type="boolean" default="false">
+  Filter out articles published after topic article
+</ParamField>
+
+### Advanced Options
+
+<ParamField path="generator" type="String" default="BagOfWordsQueryGenerator">
+  QueryGenerator class to use
+</ParamField>
+
+<ParamField path="topicReader" type="String">
+  TopicReader class to use for custom topic formats
+</ParamField>
+
+<ParamField path="encoder" type="String">
+  Query encoder for supervised sparse retrieval
+</ParamField>
+
+<ParamField path="collectionClass" type="String">
+  Collection class for on-the-fly document parsing (if doc vectors not stored)
+</ParamField>
+
+<ParamField path="rerankCutoff" type="int" default="50">
+  Maximum hits for initial round ranking (before reranking)
+</ParamField>
+
+<ParamField path="rf.qrels" type="String">
+  Qrels file for relevance feedback
+</ParamField>
+
+<ParamField path="arbitraryScoreTieBreak" type="boolean" default="false">
+  Break score ties arbitrarily (not recommended for reproducibility)
+</ParamField>
+
+<ParamField path="skipExists" type="boolean" default="false">
+  Skip search if output file already exists
+</ParamField>
+
+<ParamField path="quiet" type="boolean" default="false">
+  Suppress all logging except errors
+</ParamField>
+
+## Programmatic Usage
+
+### Basic Search Example
+
+```java
+import io.anserini.search.SearchCollection;
+
+public class BasicSearch {
+  public static void main(String[] args) throws Exception {
+    // Configure search parameters
+    SearchCollection.Args searchArgs = new SearchCollection.Args();
+    searchArgs.index = "/path/to/lucene/index";
+    searchArgs.topics = new String[] { "topics.tsv" };
+    searchArgs.output = "run.txt";
+    searchArgs.bm25();
+    searchArgs.threads = 8;
+    
+    // Execute search
+    try (SearchCollection<?> searcher = new SearchCollection<>(searchArgs)) {
+      searcher.run();
+    }
+  }
+}
+```
+
+### BM25 with Custom Parameters
+
+```java
+SearchCollection.Args args = new SearchCollection.Args();
+args.index = "/path/to/index";
+args.topics = new String[] { "topics.401-450.txt" };
+args.output = "run.bm25.txt";
+args.bm25();
+args.bm25_k1 = new String[] { "0.82" };
+args.bm25_b = new String[] { "0.68" };
+args.threads = 16;
+
+try (SearchCollection<?> searcher = new SearchCollection<>(args)) {
+  searcher.run();
+}
+```
+
+### RM3 Query Expansion
+
+```java
+SearchCollection.Args args = new SearchCollection.Args();
+args.index = "/path/to/index";
+args.topics = new String[] { "topics.robust04.txt" };
+args.output = "run.bm25+rm3.txt";
+args.bm25();
+args.rm3 = true;
+args.rm3_fbTerms = new String[] { "10" };
+args.rm3_fbDocs = new String[] { "10" };
+args.rm3_originalQueryWeight = new String[] { "0.5" };
+
+try (SearchCollection<?> searcher = new SearchCollection<>(args)) {
+  searcher.run();
+}
+```
+
+### Query Likelihood with Dirichlet Smoothing
+
+```java
+SearchCollection.Args args = new SearchCollection.Args();
+args.index = "/path/to/index";
+args.topics = new String[] { "topics.tsv" };
+args.output = "run.qld.txt";
+args.qld();
+args.qld_mu = new String[] { "2500" };
+args.threads = 8;
+
+try (SearchCollection<?> searcher = new SearchCollection<>(args)) {
+  searcher.run();
+}
+```
+
+### Multi-Field Search
+
+```java
+SearchCollection.Args args = new SearchCollection.Args();
+args.index = "/path/to/index";
+args.topics = new String[] { "queries.tsv" };
+args.output = "run.multifield.txt";
+args.bm25();
+args.fields = new String[] { "contents=0.8", "title=0.2" };
+
+try (SearchCollection<?> searcher = new SearchCollection<>(args)) {
+  searcher.run();
+}
+```
+
+### SDM with Rocchio
+
+```java
+SearchCollection.Args args = new SearchCollection.Args();
+args.index = "/path/to/index";
+args.topics = new String[] { "topics.txt" };
+args.output = "run.sdm+rocchio.txt";
+args.bm25();
+args.sdm = true;
+args.sdm_tw = 0.85f;
+args.sdm_ow = 0.1f;
+args.sdm_uw = 0.05f;
+args.rocchio = true;
+args.rocchio_topFbTerms = new String[] { "20" };
+args.rocchio_topFbDocs = new String[] { "10" };
+
+try (SearchCollection<?> searcher = new SearchCollection<>(args)) {
+  searcher.run();
+}
+```
+
+## Key Methods
+
+### run()
+
+```java
+public void run()
+```
+
+Executes the search operation with configured parameters. Processes all topics, performs searches, applies reranking if configured, and writes results to the output file.
+
+### close()
+
+```java
+public void close() throws IOException
+```
+
+Closes the index reader and releases resources.
+
+## Return Types
+
+SearchCollection writes results to files rather than returning them directly. However, internally it uses:
+
+- **`ScoredDoc[]`**: Array of search results, each containing:
+  - `docid` (String): Collection document ID
+  - `lucene_docid` (int): Internal Lucene document ID
+  - `score` (float): Retrieval score
+  - `lucene_document` (Document): Lucene document object
+
+- **`ScoredDocs`**: Object containing arrays of results:
+  - `docids` (String[]): Collection document IDs
+  - `lucene_docids` (int[]): Internal Lucene document IDs
+  - `scores` (float[]): Retrieval scores
+  - `lucene_documents` (Document[]): Lucene document objects
+
+## Output Formats
+
+### TREC Format (default)
+
+```
+1 Q0 doc1 1 0.9543 Anserini
+1 Q0 doc2 2 0.9234 Anserini
+2 Q0 doc3 1 0.8765 Anserini
+```
+
+Format: `qid iter docid rank score runtag`
+
+### MS MARCO Format
+
+```
+1\tdoc1\t1
+1\tdoc2\t2
+2\tdoc3\t1
+```
+
+Format: `qid\tdocid\trank` (tab-separated)
+
+## See Also
+
+- [SimpleSearcher](/api/search/simple-searcher) - High-level search API for interactive use
+- [HnswDenseSearcher](/api/search/dense-searcher) - Dense vector search with HNSW
+- [FlatDenseSearcher](/api/search/dense-searcher) - Dense vector search with flat index

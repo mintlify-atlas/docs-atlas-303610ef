@@ -1,122 +1,138 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Anserini",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#242b2c",
+    "light": "#040404",
+    "dark": "#6a6a6d"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/725adcf4-7442-45a4-b054-46644731fe9a.png",
+  "logo": {
+    "light": "https://media.brand.dev/e56d6117-659e-45be-a1aa-2bb53760f29b.svg",
+    "dark": "https://media.brand.dev/e56d6117-659e-45be-a1aa-2bb53760f29b.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/castorini/anserini"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/castorini/anserini"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/information-retrieval",
+              "concepts/indexing",
+              "concepts/searching",
+              "concepts/evaluation"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Indexing",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "indexing/index-collection",
+              "indexing/index-options",
+              "indexing/prebuilt-indexes",
+              "indexing/dense-vectors"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Search",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "search/sparse-retrieval",
+              "search/dense-retrieval",
+              "search/hybrid-retrieval",
+              "search/reranking"
+            ]
+          },
+          {
+            "group": "Encoders",
+            "pages": [
+              "encoders/overview",
+              "encoders/dense-encoders",
+              "encoders/sparse-encoders",
+              "encoders/onnx"
+            ]
+          },
+          {
+            "group": "Regression Testing",
+            "pages": [
+              "regressions/overview",
+              "regressions/ms-marco",
+              "regressions/beir",
+              "regressions/running-regressions"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/reproducibility",
+              "guides/custom-collections",
+              "guides/pyserini-integration"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Indexing API",
             "pages": [
-              "api-reference/introduction"
+              "api/indexing/index-collection",
+              "api/indexing/index-dense-vectors",
+              "api/indexing/index-reader-utils"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Search API",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/search/search-collection",
+              "api/search/simple-searcher",
+              "api/search/dense-searcher"
+            ]
+          },
+          {
+            "group": "Encoders API",
+            "pages": [
+              "api/encoders/dense-encoder",
+              "api/encoders/sparse-encoder"
+            ]
+          },
+          {
+            "group": "Analysis API",
+            "pages": [
+              "api/analysis/analyzers",
+              "api/analysis/tokenizers"
+            ]
+          },
+          {
+            "group": "Evaluation API",
+            "pages": [
+              "api/evaluation/trec-eval",
+              "api/evaluation/qrels"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

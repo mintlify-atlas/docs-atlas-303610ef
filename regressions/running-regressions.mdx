@@ -1,0 +1,460 @@
+---
+title: How to Run Regressions
+description: Complete guide to running Anserini regression tests
+---
+
+## Quick Start
+
+The simplest way to run a complete regression test:
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage
+```
+
+This command will:
+1. Build the index from scratch
+2. Verify index statistics
+3. Perform retrieval runs
+4. Evaluate and verify effectiveness results
+
+## The `run_regression.py` Script
+
+The `run_regression.py` script is the main driver for all regression tests in Anserini. It automates the entire experimental pipeline based on YAML configuration files.
+
+### Required Argument
+
+```bash
+--regression <name>    # Name of the regression test to run
+```
+
+The regression name corresponds to a YAML configuration file in `src/main/resources/regression/`.
+
+### Common Options
+
+<CodeGroup>
+```bash Index Building
+--index               # Build the index from scratch
+--index-threads N     # Override number of indexing threads (default: from YAML)
+```
+
+```bash Index Verification  
+--verify              # Verify index statistics
+```
+
+```bash Search & Evaluation
+--search              # Perform retrieval and evaluate results
+--search-pool N       # Number of parallel search runs (default: 4)
+```
+
+```bash Corpus Management
+--download            # Download the corpus
+--corpus-path PATH    # Override corpus path from YAML
+```
+
+```bash Utilities
+--dry-run             # Show commands without executing them
+--lucene8             # Enable lenient score matching for Lucene 8 compatibility
+```
+</CodeGroup>
+
+## Complete Workflow
+
+<Steps>
+  <Step title="Download the Corpus (Optional)">
+    If the corpus isn't already available:
+    
+    ```bash
+    python src/main/python/run_regression.py \
+      --download \
+      --regression msmarco-v1-passage
+    ```
+    
+    <Info>
+      Not all regressions support `--download`. Check the regression YAML file for `download_url`.
+    </Info>
+  </Step>
+  
+  <Step title="Build the Index">
+    Build the index from the collection:
+    
+    ```bash
+    python src/main/python/run_regression.py \
+      --index \
+      --regression msmarco-v1-passage
+    ```
+    
+    This reads the corpus and creates a Lucene index with the specified configuration.
+  </Step>
+  
+  <Step title="Verify Index Statistics">
+    Ensure the index was built correctly:
+    
+    ```bash
+    python src/main/python/run_regression.py \
+      --verify \
+      --regression msmarco-v1-passage
+    ```
+    
+    The script checks:
+    - Number of documents
+    - Number of non-empty documents  
+    - Total number of terms
+    - And other index statistics
+  </Step>
+  
+  <Step title="Run Search and Evaluation">
+    Perform retrieval runs and verify effectiveness:
+    
+    ```bash
+    python src/main/python/run_regression.py \
+      --search \
+      --regression msmarco-v1-passage
+    ```
+    
+    The script:
+    - Runs retrieval for all configured topics
+    - Evaluates with `trec_eval` or other metrics
+    - Compares results against expected values
+  </Step>
+</Steps>
+
+## Running All Steps Together
+
+Combine all steps in a single command:
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage
+```
+
+<Warning>
+  This can take significant time and disk space. For MS MARCO V1 passage, expect ~20 minutes on modern hardware.
+</Warning>
+
+## Background Execution
+
+For long-running regressions, use `nohup` to run in the background:
+
+```bash
+nohup python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage \
+  >& logs/log.msmarco-v1-passage.txt &
+```
+
+Monitor progress:
+
+```bash
+tail -f logs/log.msmarco-v1-passage.txt
+```
+
+## Advanced Usage
+
+### Override Corpus Path
+
+If your corpus is in a non-standard location:
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --corpus-path /custom/path/to/msmarco-passage \
+  --regression msmarco-v1-passage
+```
+
+### Control Indexing Threads
+
+Override the number of indexing threads:
+
+```bash
+python src/main/python/run_regression.py \
+  --index \
+  --index-threads 8 \
+  --regression msmarco-v1-passage
+```
+
+### Parallel Search Execution
+
+Control how many retrieval runs execute in parallel:
+
+```bash
+python src/main/python/run_regression.py \
+  --search \
+  --search-pool 8 \
+  --regression msmarco-v1-passage
+```
+
+### Dry Run
+
+Preview commands without executing them:
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --dry-run \
+  --regression msmarco-v1-passage
+```
+
+This is useful for:
+- Understanding what the script will do
+- Debugging configuration issues
+- Copying commands for manual execution
+
+## Understanding Output
+
+### Successful Run
+
+```
+========== Indexing ==========
+bin/run.sh io.anserini.index.IndexCollection ...
+[Index building output]
+
+========== Verifying Index ==========
+bin/run.sh io.anserini.index.IndexReaderUtils ...
+Documents: 8841823
+Unique terms: 2660824
+[OK] All index statistics verified!
+
+========== Ranking ==========
+bin/run.sh io.anserini.search.SearchCollection ...
+[Retrieval output]
+
+========== Verifying Results ==========
+   [OK] expected: 0.1840 actual: 0.1840 - metric: MRR@10   model: bm25 topics: msmarco-passage-dev-subset
+   [OK] expected: 0.8573 actual: 0.8573 - metric: R@1000  model: bm25 topics: msmarco-passage-dev-subset
+All Tests Passed! Total elapsed time: 1234s
+```
+
+### Failed Verification
+
+```
+[FAIL] expected: 0.1840 actual: 0.1835 (delta=0.0005) - metric: MRR@10 model: bm25 topics: msmarco-passage-dev-subset
+```
+
+<Warning>
+  If you see a failed verification, this could indicate:
+  - A bug in recent code changes
+  - Lucene version incompatibility
+  - Corpus download/extraction issues
+  - Index corruption
+</Warning>
+
+## Common Workflows
+
+### Test a Single Configuration
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage
+```
+
+### Run Multiple Regressions in Background
+
+```bash
+# MS MARCO V1 passage variants
+nohup python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage \
+  >& logs/log.msmarco-v1-passage.txt &
+
+nohup python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage.docTTTTTquery \
+  >& logs/log.msmarco-v1-passage.docTTTTTquery.txt &
+
+nohup python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage.splade-pp-ed.cached \
+  >& logs/log.msmarco-v1-passage.splade-pp-ed.cached.txt &
+```
+
+### Run Only Search (Index Already Built)
+
+If you've already built the index:
+
+```bash
+python src/main/python/run_regression.py \
+  --search \
+  --regression msmarco-v1-passage
+```
+
+### Rebuild Index Only
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify \
+  --regression msmarco-v1-passage
+```
+
+## Troubleshooting
+
+### Issue: "Unable to find the corpus!"
+
+**Solution**: Specify the corpus path explicitly:
+
+```bash
+python src/main/python/run_regression.py \
+  --corpus-path /path/to/corpus \
+  --index --verify --search \
+  --regression msmarco-v1-passage
+```
+
+Or ensure the corpus is in one of the default locations:
+- Current directory
+- `/collection/`
+- `/mnt/`  
+- `/tuna1/`
+- `/store/`
+
+### Issue: Index Statistics Mismatch
+
+**Possible causes**:
+1. Incomplete corpus download
+2. Corrupted extraction
+3. Wrong corpus version
+
+**Solution**: Re-download and extract the corpus:
+
+```bash
+# Remove old corpus
+rm -rf collections/msmarco-passage
+
+# Re-download
+python src/main/python/run_regression.py \
+  --download \
+  --regression msmarco-v1-passage
+```
+
+### Issue: Effectiveness Scores Don't Match
+
+**Possible causes**:
+1. Lucene version change (scoring differences)
+2. Recent code changes affecting retrieval
+3. Index built with different settings
+
+**Solutions**:
+
+```bash
+# Try Lucene 8 compatibility mode
+python src/main/python/run_regression.py \
+  --search --lucene8 \
+  --regression msmarco-v1-passage
+
+# Rebuild index from scratch
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression msmarco-v1-passage
+```
+
+### Issue: Out of Memory During Indexing
+
+**Solution**: Reduce indexing threads:
+
+```bash
+python src/main/python/run_regression.py \
+  --index --index-threads 1 \
+  --regression msmarco-v1-passage
+```
+
+### Issue: Slow Retrieval
+
+**Solution**: Increase search pool size:
+
+```bash
+python src/main/python/run_regression.py \
+  --search --search-pool 16 \
+  --regression msmarco-v1-passage
+```
+
+## Batch Running Regressions
+
+### Run All MS MARCO V1 Passage Regressions
+
+```bash
+for regression in msmarco-v1-passage \
+  msmarco-v1-passage.docTTTTTquery \
+  msmarco-v1-passage.unicoil.cached \
+  msmarco-v1-passage.splade-pp-ed.cached; do
+  echo "Running $regression"
+  nohup python src/main/python/run_regression.py \
+    --index --verify --search \
+    --regression $regression \
+    >& logs/log.$regression.txt &
+done
+```
+
+### Run All BEIR BM25 Regressions
+
+```bash
+for dataset in arguana bioasq climate-fever scifact trec-covid; do
+  echo "Running BEIR: $dataset"
+  python src/main/python/run_regression.py \
+    --index --verify --search \
+    --regression beir-v1.0.0-${dataset}.flat
+done
+```
+
+## Configuration Files
+
+Regression configurations are stored as YAML files in:
+
+```
+src/main/resources/regression/
+```
+
+Example structure:
+
+```yaml
+corpus: msmarco-passage
+corpus_path: collections/msmarco-passage
+
+index_path: indexes/lucene-inverted.msmarco-v1-passage/
+index_threads: 9
+collection_class: JsonCollection
+generator_class: DefaultLuceneDocumentGenerator
+
+index_stats:
+  documents: 8841823
+  documents (non-empty): 8841823
+  total terms: 352316036
+
+topics:
+  - name: "MS MARCO Passage: Dev"
+    id: dev
+    path: topics.msmarco-passage.dev-subset.txt
+    qrel: qrels.msmarco-passage.dev-subset.txt
+
+models:
+  - name: bm25
+    params: -bm25
+    results:
+      MRR@10:
+        - 0.18400
+      R@1000:  
+        - 0.85729
+
+metrics:
+  - metric: MRR@10
+    command: bin/trec_eval
+    params: -c -M 10 -m recip_rank
+  - metric: R@1000
+    command: bin/trec_eval
+    params: -c -m recall.1000
+```
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Regression Overview" icon="book" href="/regressions/overview">
+    Learn about the regression framework
+  </Card>
+  <Card title="MS MARCO Regressions" icon="database" href="/regressions/ms-marco">
+    Explore MS MARCO regressions
+  </Card>
+  <Card title="BEIR Regressions" icon="chart-line" href="/regressions/beir">
+    Run BEIR benchmark tests
+  </Card>
+</CardGroup>

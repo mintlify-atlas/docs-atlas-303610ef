@@ -1,0 +1,281 @@
+---
+title: Dense Encoders
+description: Dense encoder implementations for semantic retrieval in Anserini
+---
+
+# Dense Encoders
+
+Dense encoders in Anserini generate fixed-length, continuous vector representations (embeddings) from text. These embeddings capture semantic meaning and enable similarity-based retrieval using methods like cosine similarity or dot product.
+
+All dense encoders extend the `DenseEncoder` base class and use [ONNX Runtime](/encoders/onnx) for efficient inference.
+
+## Base Architecture
+
+Dense encoders in Anserini (`io.anserini.encoder.dense.DenseEncoder`) share common characteristics:
+
+- Extend `OnnxEncoder<float[]>` - return float arrays as embeddings
+- Use BERT tokenization with vocabulary files
+- Normalize output vectors using L2 normalization
+- Cache models in `~/.cache/pyserini/encoders/`
+
+**Normalization**: All dense encoders apply L2 normalization to output vectors:
+
+```java
+public static float[] normalize(float[] vector) {
+    final float EPS = 1e-12f;
+    float norm = 0;
+    for (float v : vector) {
+        norm += v * v;
+    }
+    norm = (float) Math.sqrt(norm);
+
+    for (int i = 0; i < vector.length; i++) {
+        vector[i] = vector[i] / (norm + EPS);
+    }
+    return vector;
+}
+```
+
+See: `src/main/java/io/anserini/encoder/dense/DenseEncoder.java:31`
+
+## Available Encoders
+
+### BgeBaseEn15Encoder
+
+**BGE (BAAI General Embedding) Base English v1.5** - A high-quality dense encoder optimized for English text retrieval.
+
+<Accordion title="Model Details">
+  - **Hugging Face**: `BAAI/bge-base-en-v1.5`
+  - **Embedding Dimension**: 768
+  - **Max Sequence Length**: 512 tokens
+  - **Instruction Prefix**: "Represent this sentence for searching relevant passages: "
+  - **Model Output**: `last_hidden_state` (uses CLS token)
+</Accordion>
+
+#### Usage
+
+```java
+import io.anserini.encoder.dense.BgeBaseEn15Encoder;
+import ai.onnxruntime.OrtException;
+import java.io.IOException;
+import java.net.URISyntaxException;
+
+try (BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder()) {
+    String query = "What is information retrieval?";
+    float[] embedding = encoder.encode(query);
+    
+    // embedding.length = 768
+    // All values are normalized (L2 norm = 1.0)
+    System.out.println("Embedding dimension: " + embedding.length);
+} catch (IOException | OrtException | URISyntaxException e) {
+    e.printStackTrace();
+}
+```
+
+**Implementation**: The encoder prepends an instruction prefix to queries before tokenization and extracts the CLS token representation from the model's last hidden state.
+
+See: `src/main/java/io/anserini/encoder/dense/BgeBaseEn15Encoder.java:50`
+
+<Note>
+BGE models require an instruction prefix for optimal performance. The prefix "Represent this sentence for searching relevant passages: " is automatically added to all queries.
+</Note>
+
+---
+
+### BgeLargeEn15Encoder
+
+**BGE Large English v1.5** - A larger variant of BGE with improved semantic understanding at the cost of increased computational requirements.
+
+<Accordion title="Model Details">
+  - **Hugging Face**: `BAAI/bge-large-en-v1.5`
+  - **Embedding Dimension**: 1024
+  - **Max Sequence Length**: 512 tokens
+  - **Instruction Prefix**: "Represent this sentence for searching relevant passages: "
+  - **Model Output**: `last_hidden_state` (uses CLS token)
+</Accordion>
+
+#### Usage
+
+```java
+import io.anserini.encoder.dense.BgeLargeEn15Encoder;
+
+try (BgeLargeEn15Encoder encoder = new BgeLargeEn15Encoder()) {
+    String query = "machine learning algorithms";
+    float[] embedding = encoder.encode(query);
+    
+    // embedding.length = 1024
+    System.out.println("Embedding dimension: " + embedding.length);
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+**Performance Consideration**: BGE-Large provides better retrieval quality than BGE-Base but requires more memory and computation time.
+
+See: `src/main/java/io/anserini/encoder/dense/BgeLargeEn15Encoder.java:50`
+
+---
+
+### CosDprDistilEncoder
+
+**Contrastive DPR Distilled Encoder** - A distilled dense passage retriever optimized for efficiency without instruction prefixes.
+
+<Accordion title="Model Details">
+  - **Model**: CosDPR distilled variant
+  - **Embedding Dimension**: 768
+  - **Max Sequence Length**: Variable (no hard limit)
+  - **Instruction Prefix**: None
+  - **Model Output**: `pooler_output`
+</Accordion>
+
+#### Usage
+
+```java
+import io.anserini.encoder.dense.CosDprDistilEncoder;
+
+try (CosDprDistilEncoder encoder = new CosDprDistilEncoder()) {
+    String query = "neural information retrieval";
+    float[] embedding = encoder.encode(query);
+    
+    System.out.println("Embedding dimension: " + embedding.length);
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+**Key Difference**: Unlike BGE encoders, CosDPR does not use an instruction prefix and extracts embeddings from the `pooler_output` rather than the CLS token of `last_hidden_state`.
+
+See: `src/main/java/io/anserini/encoder/dense/CosDprDistilEncoder.java:46`
+
+---
+
+### ArcticEmbedLEncoder
+
+**Snowflake Arctic Embed Large** - A high-capacity encoder designed for comprehensive semantic understanding.
+
+<Accordion title="Model Details">
+  - **Hugging Face**: `Snowflake/snowflake-arctic-embed-l`
+  - **Embedding Dimension**: 1024
+  - **Max Sequence Length**: 512 tokens
+  - **Instruction Prefix**: "Represent this sentence for searching relevant passages: "
+  - **Model Inputs**: `input_ids`, `token_type_ids`, `attention_mask`
+</Accordion>
+
+#### Usage
+
+```java
+import io.anserini.encoder.dense.ArcticEmbedLEncoder;
+
+try (ArcticEmbedLEncoder encoder = new ArcticEmbedLEncoder()) {
+    String query = "deep learning transformers";
+    float[] embedding = encoder.encode(query);
+    
+    // embedding.length = 1024
+    System.out.println("Embedding dimension: " + embedding.length);
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+**Advanced Inputs**: Arctic Embed requires additional inputs including `token_type_ids` and `attention_mask`, which are automatically generated during encoding.
+
+See: `src/main/java/io/anserini/encoder/dense/ArcticEmbedLEncoder.java:52`
+
+---
+
+## Encoder Comparison
+
+<AccordionGroup>
+  <Accordion title="Performance Characteristics">
+    | Encoder | Embedding Dim | Model Size | Inference Speed | Quality |
+    |---------|---------------|------------|-----------------|----------|
+    | **BgeBaseEn15** | 768 | Base | Fast | High |
+    | **BgeLargeEn15** | 1024 | Large | Moderate | Very High |
+    | **CosDprDistil** | 768 | Small | Very Fast | Moderate |
+    | **ArcticEmbedL** | 1024 | Large | Moderate | Very High |
+  </Accordion>
+
+  <Accordion title="When to Use Each Encoder">
+    - **BgeBaseEn15**: Default choice for most English retrieval tasks - good balance of speed and quality
+    - **BgeLargeEn15**: When retrieval quality is critical and computational resources are available
+    - **CosDprDistil**: When inference speed is the priority or deploying on resource-constrained environments
+    - **ArcticEmbedL**: For specialized domain retrieval requiring high-quality embeddings
+  </Accordion>
+</AccordionGroup>
+
+## Implementation Details
+
+### Constructor Pattern
+
+All dense encoders follow a consistent constructor pattern:
+
+```java
+public BgeBaseEn15Encoder() throws IOException, OrtException, URISyntaxException {
+    super(MODEL_NAME, MODEL_URL, VOCAB_NAME, VOCAB_URL, CONFIG_URL);
+}
+```
+
+The base `DenseEncoder` constructor:
+- Downloads model and vocabulary files if not cached
+- Initializes ONNX Runtime session
+- Creates BERT tokenizer with the vocabulary
+
+### Encoding Process
+
+<Steps>
+  <Step title="Tokenization">
+    Text is tokenized using BERT WordPiece tokenizer with `[CLS]` and `[SEP]` tokens added.
+  </Step>
+  <Step title="Token ID Conversion">
+    Tokens are converted to vocabulary indices using the model's vocabulary.
+  </Step>
+  <Step title="ONNX Inference">
+    Token IDs are passed through the ONNX model to generate embeddings.
+  </Step>
+  <Step title="Normalization">
+    Output vectors are L2-normalized for cosine similarity compatibility.
+  </Step>
+</Steps>
+
+### Resource Management
+
+All encoders implement `AutoCloseable` and should be used with try-with-resources:
+
+```java
+try (DenseEncoder encoder = new BgeBaseEn15Encoder()) {
+    // Use encoder
+} // Automatically closes ONNX session
+```
+
+<Warning>
+Failing to close encoder sessions can lead to resource leaks. Always use try-with-resources or explicitly call `close()`.
+</Warning>
+
+## Model Caching
+
+Models and vocabularies are cached in `~/.cache/pyserini/encoders/` on first use:
+
+```
+~/.cache/pyserini/encoders/
+├── bge-base-en-v1.5-optimized.onnx
+├── bge-base-en-v1.5-vocab.txt
+├── bge-large-en-v1.5-optimized.onnx
+├── bge-large-en-v1.5-vocab.txt
+├── cosdpr-distil-optimized.onnx
+├── cosdpr-distil-vocab.txt
+├── snowflake-arctic-embed-l-official.onnx
+└── snowflake-arctic-embed-l-vocab.txt
+```
+
+Subsequent instantiations use cached files, significantly reducing initialization time.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sparse Encoders" icon="grip" href="/encoders/sparse-encoders">
+    Learn about learned sparse representations
+  </Card>
+  <Card title="ONNX Integration" icon="gear" href="/encoders/onnx">
+    Understand ONNX Runtime and model optimization
+  </Card>
+</CardGroup>

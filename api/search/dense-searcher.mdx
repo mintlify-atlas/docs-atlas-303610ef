@@ -1,0 +1,498 @@
+---
+title: 'Dense Vector Searcher APIs'
+description: 'Dense vector search using HNSW and flat indexes with neural encoders'
+---
+
+## Overview
+
+Anserini provides two dense vector search implementations:
+
+1. **`HnswDenseSearcher`** - Approximate nearest neighbor search using Hierarchical Navigable Small World (HNSW) graphs
+2. **`FlatDenseSearcher`** - Exact nearest neighbor search using brute-force comparison
+
+Both support vector-based search with pre-computed embeddings or on-the-fly encoding using dense encoders.
+
+**Package**: `io.anserini.search`
+
+**Source**: 
+- `src/main/java/io/anserini/search/HnswDenseSearcher.java`
+- `src/main/java/io/anserini/search/FlatDenseSearcher.java`
+
+---
+
+## HnswDenseSearcher
+
+Approximate nearest neighbor search using HNSW indexes for fast vector similarity search.
+
+### Constructor
+
+```java
+public HnswDenseSearcher(Args args)
+```
+
+Initializes an HNSW dense searcher.
+
+<ParamField path="args" type="HnswDenseSearcher.Args" required>
+  Configuration object containing index path and search parameters
+</ParamField>
+
+### Args Class
+
+The `Args` class extends `BaseSearchArgs`:
+
+<ParamField path="index" type="String" required>
+  Path to the vector index directory
+</ParamField>
+
+<ParamField path="encoder" type="String">
+  Dense encoder class name (e.g., "TasB", "Ance", "Auto"). If specified, queries will be encoded on-the-fly.
+</ParamField>
+
+<ParamField path="efSearch" type="int" default="100">
+  HNSW efSearch parameter controlling search quality vs. speed tradeoff. Higher values increase recall but slow down search.
+</ParamField>
+
+<ParamField path="generator" type="String" default="VectorQueryGenerator">
+  QueryGenerator class to use for vector queries
+</ParamField>
+
+<ParamField path="quiet" type="boolean" default="false">
+  Suppress logging except errors
+</ParamField>
+
+### Search Methods
+
+#### search(float[] query, int k)
+
+```java
+public ScoredDoc[] search(float[] query, int k) throws IOException
+```
+
+Searches with a pre-computed query vector.
+
+<ParamField path="query" type="float[]" required>
+  Query embedding vector
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of nearest neighbors to return
+</ParamField>
+
+**Returns**: `ScoredDoc[]` - Array of k nearest neighbors
+
+#### search(K qid, float[] query, int k)
+
+```java
+public ScoredDoc[] search(@Nullable K qid, float[] query, int k) throws IOException
+```
+
+Searches with a query vector and query ID.
+
+<ParamField path="qid" type="K" nullable>
+  Query identifier
+</ParamField>
+
+<ParamField path="query" type="float[]" required>
+  Query embedding vector
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of results
+</ParamField>
+
+**Returns**: `ScoredDoc[]` - Array of search results
+
+#### search(String query, int k)
+
+```java
+public ScoredDoc[] search(String query, int k) throws IOException
+```
+
+Searches with a text query that will be encoded using the configured encoder.
+
+<ParamField path="query" type="String" required>
+  Query text to encode
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of results
+</ParamField>
+
+**Returns**: `ScoredDoc[]` - Array of search results
+
+**Note**: Requires an encoder to be configured in Args.
+
+#### search(K qid, String query, int k)
+
+```java
+public ScoredDoc[] search(@Nullable K qid, String query, int k) throws IOException
+```
+
+Searches with a text query and query ID.
+
+<ParamField path="qid" type="K" nullable>
+  Query identifier
+</ParamField>
+
+<ParamField path="query" type="String" required>
+  Query text
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of results
+</ParamField>
+
+**Returns**: `ScoredDoc[]` - Array of search results
+
+#### batch_search
+
+```java
+public SortedMap<K, ScoredDoc[]> batch_search(List<String> queries, 
+                                               List<K> qids, int k, int threads)
+```
+
+Searches multiple queries in parallel.
+
+<ParamField path="queries" type="List<String>" required>
+  List of query strings
+</ParamField>
+
+<ParamField path="qids" type="List<K>" required>
+  List of query IDs (must match queries length)
+</ParamField>
+
+<ParamField path="k" type="int" required>
+  Number of results per query
+</ParamField>
+
+<ParamField path="threads" type="int" required>
+  Number of threads for parallel search
+</ParamField>
+
+**Returns**: `SortedMap<K, ScoredDoc[]>` - Map from query ID to results
+
+### close()
+
+```java
+public void close() throws IOException
+```
+
+Closes the index reader and encoder, releasing resources.
+
+---
+
+## FlatDenseSearcher
+
+Exact nearest neighbor search using brute-force vector comparison. Slower than HNSW but guarantees exact results.
+
+### Constructor
+
+```java
+public FlatDenseSearcher(Args args)
+```
+
+Initializes a flat dense searcher.
+
+<ParamField path="args" type="FlatDenseSearcher.Args" required>
+  Configuration object
+</ParamField>
+
+### Args Class
+
+<ParamField path="index" type="String" required>
+  Path to the vector index directory
+</ParamField>
+
+<ParamField path="encoder" type="String">
+  Dense encoder class name
+</ParamField>
+
+<ParamField path="generator" type="String" default="VectorQueryGenerator">
+  QueryGenerator class to use
+</ParamField>
+
+<ParamField path="quiet" type="boolean" default="false">
+  Suppress logging except errors
+</ParamField>
+
+### Search Methods
+
+FlatDenseSearcher provides the same search methods as HnswDenseSearcher:
+
+- `search(float[] query, int k)`
+- `search(K qid, float[] query, int k)`
+- `search(String query, int k)`
+- `search(K qid, String query, int k)`
+- `batch_search(List<String> queries, List<K> qids, int k, int threads)`
+- `close()`
+
+See HnswDenseSearcher documentation above for method signatures and parameters.
+
+---
+
+## Usage Examples
+
+### HNSW Search with Pre-computed Vectors
+
+```java
+import io.anserini.search.HnswDenseSearcher;
+import io.anserini.search.ScoredDoc;
+
+public class HnswExample {
+  public static void main(String[] args) throws Exception {
+    HnswDenseSearcher.Args searchArgs = new HnswDenseSearcher.Args();
+    searchArgs.index = "/path/to/hnsw/index";
+    searchArgs.efSearch = 100;
+    
+    try (HnswDenseSearcher<String> searcher = new HnswDenseSearcher<>(searchArgs)) {
+      // Query vector (e.g., from a neural encoder)
+      float[] queryVector = new float[768]; // 768-dimensional embedding
+      // ... populate queryVector ...
+      
+      ScoredDoc[] results = searcher.search(queryVector, 10);
+      
+      for (int i = 0; i < results.length; i++) {
+        System.out.printf("%d. %s (similarity: %.4f)\n",
+            i + 1, results[i].docid, results[i].score);
+      }
+    }
+  }
+}
+```
+
+### HNSW Search with Encoder
+
+```java
+import io.anserini.search.HnswDenseSearcher;
+
+public class HnswEncoderExample {
+  public static void main(String[] args) throws Exception {
+    HnswDenseSearcher.Args searchArgs = new HnswDenseSearcher.Args();
+    searchArgs.index = "/path/to/hnsw/index";
+    searchArgs.encoder = "TasB";  // TAS-B encoder
+    searchArgs.efSearch = 150;
+    
+    try (HnswDenseSearcher<String> searcher = new HnswDenseSearcher<>(searchArgs)) {
+      // Query text will be encoded automatically
+      ScoredDoc[] results = searcher.search("What is machine learning?", 20);
+      
+      for (ScoredDoc doc : results) {
+        System.out.printf("%s: %.4f\n", doc.docid, doc.score);
+      }
+    }
+  }
+}
+```
+
+### Batch Search with HNSW
+
+```java
+import io.anserini.search.HnswDenseSearcher;
+import java.util.*;
+
+public class HnswBatchExample {
+  public static void main(String[] args) throws Exception {
+    HnswDenseSearcher.Args searchArgs = new HnswDenseSearcher.Args();
+    searchArgs.index = "/path/to/hnsw/index";
+    searchArgs.encoder = "Ance";  // ANCE encoder
+    searchArgs.efSearch = 100;
+    
+    try (HnswDenseSearcher<String> searcher = new HnswDenseSearcher<>(searchArgs)) {
+      List<String> queries = Arrays.asList(
+          "What is deep learning?",
+          "How does neural search work?",
+          "Best practices for information retrieval"
+      );
+      List<String> qids = Arrays.asList("1", "2", "3");
+      
+      SortedMap<String, ScoredDoc[]> results = 
+          searcher.batch_search(queries, qids, 10, 8);
+      
+      for (Map.Entry<String, ScoredDoc[]> entry : results.entrySet()) {
+        System.out.println("Query " + entry.getKey() + ":");
+        for (int i = 0; i < entry.getValue().length; i++) {
+          System.out.printf("  %d. %s (%.4f)\n",
+              i + 1, entry.getValue()[i].docid, entry.getValue()[i].score);
+        }
+      }
+    }
+  }
+}
+```
+
+### Flat (Exact) Search
+
+```java
+import io.anserini.search.FlatDenseSearcher;
+import io.anserini.search.ScoredDoc;
+
+public class FlatSearchExample {
+  public static void main(String[] args) throws Exception {
+    FlatDenseSearcher.Args searchArgs = new FlatDenseSearcher.Args();
+    searchArgs.index = "/path/to/flat/index";
+    searchArgs.encoder = "Auto";  // Auto encoder for MS MARCO
+    
+    try (FlatDenseSearcher<String> searcher = new FlatDenseSearcher<>(searchArgs)) {
+      ScoredDoc[] results = searcher.search(
+          "How to optimize neural networks?", 10);
+      
+      for (ScoredDoc doc : results) {
+        System.out.printf("%s: %.4f\n", doc.docid, doc.score);
+      }
+    }
+  }
+}
+```
+
+### Comparing HNSW vs Flat Search
+
+```java
+import io.anserini.search.*;
+import java.util.*;
+
+public class CompareSearchers {
+  public static void main(String[] args) throws Exception {
+    String query = "information retrieval techniques";
+    int k = 100;
+    
+    // HNSW (approximate)
+    HnswDenseSearcher.Args hnswArgs = new HnswDenseSearcher.Args();
+    hnswArgs.index = "/path/to/hnsw/index";
+    hnswArgs.encoder = "TasB";
+    hnswArgs.efSearch = 100;
+    
+    long hnswStart = System.currentTimeMillis();
+    try (HnswDenseSearcher<String> hnswSearcher = new HnswDenseSearcher<>(hnswArgs)) {
+      ScoredDoc[] hnswResults = hnswSearcher.search(query, k);
+      long hnswTime = System.currentTimeMillis() - hnswStart;
+      System.out.println("HNSW search time: " + hnswTime + "ms");
+      System.out.println("Top result: " + hnswResults[0].docid + 
+                         " (" + hnswResults[0].score + ")");
+    }
+    
+    // Flat (exact)
+    FlatDenseSearcher.Args flatArgs = new FlatDenseSearcher.Args();
+    flatArgs.index = "/path/to/flat/index";
+    flatArgs.encoder = "TasB";
+    
+    long flatStart = System.currentTimeMillis();
+    try (FlatDenseSearcher<String> flatSearcher = new FlatDenseSearcher<>(flatArgs)) {
+      ScoredDoc[] flatResults = flatSearcher.search(query, k);
+      long flatTime = System.currentTimeMillis() - flatStart;
+      System.out.println("Flat search time: " + flatTime + "ms");
+      System.out.println("Top result: " + flatResults[0].docid + 
+                         " (" + flatResults[0].score + ")");
+    }
+  }
+}
+```
+
+### Using Custom Query Vectors
+
+```java
+import io.anserini.search.HnswDenseSearcher;
+import io.anserini.search.ScoredDoc;
+
+public class CustomVectorExample {
+  public static void main(String[] args) throws Exception {
+    HnswDenseSearcher.Args searchArgs = new HnswDenseSearcher.Args();
+    searchArgs.index = "/path/to/index";
+    searchArgs.efSearch = 200;  // Higher efSearch for better recall
+    
+    try (HnswDenseSearcher<Integer> searcher = new HnswDenseSearcher<>(searchArgs)) {
+      // Load pre-computed query vectors (e.g., from file)
+      Map<Integer, float[]> queryVectors = loadQueryVectors();
+      
+      for (Map.Entry<Integer, float[]> entry : queryVectors.entrySet()) {
+        Integer qid = entry.getKey();
+        float[] vector = entry.getValue();
+        
+        ScoredDoc[] results = searcher.search(qid, vector, 1000);
+        
+        // Process results...
+        System.out.println("Query " + qid + ": " + results.length + " results");
+      }
+    }
+  }
+  
+  private static Map<Integer, float[]> loadQueryVectors() {
+    // Implementation to load vectors from file
+    return new HashMap<>();
+  }
+}
+```
+
+## Available Encoders
+
+Anserini supports various dense encoders:
+
+- **`TasB`** - TAS-B (Topics-Aware Semantic BERT)
+- **`Ance`** - ANCE (Approximate Nearest Neighbor Negative Contrastive Estimation)
+- **`Auto`** - Auto encoder for MS MARCO
+- **`Tct`** - TCT-ColBERT
+- **`Dpr`** - Dense Passage Retrieval
+- **`Bpr`** - BPR (Binary Passage Retrieval)
+
+Encoders are loaded from `io.anserini.encoder.dense` package.
+
+## HNSW Parameters
+
+### efSearch Parameter
+
+The `efSearch` parameter controls the quality-speed tradeoff:
+
+- **Lower values (50-100)**: Faster search, lower recall
+- **Medium values (100-200)**: Balanced performance
+- **Higher values (200-500)**: Slower search, higher recall approaching exact
+
+**Example**:
+```java
+// Fast, lower recall
+args.efSearch = 50;
+
+// Standard, good balance
+args.efSearch = 100;
+
+// High quality, approaching exact
+args.efSearch = 500;
+```
+
+## When to Use Each Searcher
+
+### Use HnswDenseSearcher when:
+- Index has millions of vectors
+- Speed is important
+- Approximate results are acceptable (typically >95% recall)
+- Real-time search requirements
+
+### Use FlatDenseSearcher when:
+- Index is small (under 1M vectors)
+- Exact results required
+- Computing ground truth for evaluation
+- Benchmark or research purposes
+
+## Return Types
+
+Both searchers return `ScoredDoc` objects:
+
+<ResponseField name="docid" type="String">
+  Collection document ID
+</ResponseField>
+
+<ResponseField name="lucene_docid" type="int">
+  Internal Lucene document ID
+</ResponseField>
+
+<ResponseField name="score" type="float">
+  Vector similarity score (typically cosine similarity or dot product)
+</ResponseField>
+
+<ResponseField name="lucene_document" type="Document">
+  Lucene Document object with stored fields
+</ResponseField>
+
+## See Also
+
+- [SimpleSearcher](/api/search/simple-searcher) - High-level sparse retrieval API
+- [SearchCollection](/api/search/search-collection) - Batch sparse retrieval
+- [Dense Indexing Guide](/indexing/dense-vectors) - Creating vector indexes

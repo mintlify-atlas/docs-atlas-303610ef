@@ -1,0 +1,373 @@
+---
+title: Indexing Concepts
+description: Understanding inverted indexes, document generators, analyzers, and index options in Anserini
+---
+
+## What is Indexing?
+
+Indexing is the process of building a data structure that enables fast retrieval from a document collection. Think of it like creating an index at the back of a book - instead of reading every page to find a topic, you look it up in the index.
+
+<Note>
+Indexing is a one-time operation per collection. Once built, an index supports many retrieval operations efficiently.
+</Note>
+
+## Inverted Indexes
+
+The core data structure in information retrieval is the **inverted index**. While a document contains words, an inverted index maps words to documents.
+
+### How It Works
+
+Consider these documents:
+
+```
+Doc 1: "the cat sat on the mat"
+Doc 2: "the dog sat on the log" 
+Doc 3: "cats and dogs"
+```
+
+An inverted index maps each term to the documents containing it:
+
+```
+cat  → [Doc 1]
+sat  → [Doc 1, Doc 2]
+dog  → [Doc 2, Doc 3]
+mat  → [Doc 1]
+log  → [Doc 2]
+cats → [Doc 3]
+dogs → [Doc 3]
+```
+
+When searching for "cat", the system can instantly find Doc 1 without scanning all documents.
+
+<Info>
+Anserini builds inverted indexes using Apache Lucene, the same core technology powering Elasticsearch.
+</Info>
+
+## Lucene Indexing Architecture
+
+Lucene's inverted index stores rich information:
+
+- **Term dictionary**: All unique terms in the collection
+- **Postings lists**: For each term, which documents contain it
+- **Term frequencies**: How many times each term appears in each document
+- **Positions** (optional): Where terms appear within documents
+- **Document vectors** (optional): Complete term statistics per document
+- **Stored fields** (optional): Original document content
+
+### Index Structure
+
+A Lucene index on disk consists of:
+
+```bash
+indexes/msmarco-passage/lucene-index/
+├── segments_*           # Index metadata
+├── _*.si                # Segment info  
+├── _*.fdx, _*.fdt      # Stored fields
+├── _*.tvx, _*.tvd      # Term vectors
+└── _*.tim, _*.tip      # Term dictionary & postings
+```
+
+## Indexing with Anserini
+
+### Basic Indexing Command
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input collections/msmarco-passage/collection_jsonl \
+  -index indexes/msmarco-passage/lucene-index \
+  -generator DefaultLuceneDocumentGenerator \
+  -threads 9 -storePositions -storeDocvectors -storeRaw
+```
+
+Let's break down each component:
+
+### Document Generators
+
+A **document generator** transforms source documents into Lucene documents. Anserini provides specialized generators for different formats:
+
+#### DefaultLuceneDocumentGenerator
+
+The default generator for JSON documents:
+
+```java
+public class DefaultLuceneDocumentGenerator<T extends SourceDocument> 
+    implements LuceneDocumentGenerator<T> {
+  
+  @Override
+  public Document createDocument(T src) throws GeneratorException {
+    Document doc = new Document();
+    
+    // Store document ID
+    doc.add(new StringField(Constants.ID, src.id(), Field.Store.YES));
+    
+    // Index contents
+    doc.add(new Field(Constants.CONTENTS, src.contents(), fieldType));
+    
+    return doc;
+  }
+}
+```
+
+Specialized generators exist for different collections:
+- **TweetGenerator**: Twitter/X posts with special handling
+- **WashingtonPostGenerator**: News articles with metadata  
+- **Cord19Generator**: Scientific papers from COVID-19 research
+- **DenseVectorDocumentGenerator**: Pre-computed embeddings for dense retrieval
+
+<Accordion title="Creating Custom Generators">
+To index a custom collection format, extend `LuceneDocumentGenerator`:
+
+```java
+public class MyCustomGenerator 
+    implements LuceneDocumentGenerator<MyDocument> {
+  
+  @Override
+  public Document createDocument(MyDocument src) {
+    Document doc = new Document();
+    
+    // Add indexed fields
+    doc.add(new TextField("title", src.getTitle(), Store.YES));
+    doc.add(new TextField("body", src.getBody(), Store.NO));
+    
+    // Add metadata
+    doc.add(new StoredField("date", src.getDate()));
+    
+    return doc;
+  }
+}
+```
+
+Specify with `-generator MyCustomGenerator` when indexing.
+</Accordion>
+
+## Analyzers
+
+An **analyzer** transforms text into terms for indexing. Analysis typically includes:
+
+### Text Processing Pipeline
+
+1. **Tokenization**: Split text into words
+2. **Lowercasing**: "The" → "the" 
+3. **Stopword removal**: Remove common words ("the", "a", "is")
+4. **Stemming**: Reduce words to root form ("running" → "run")
+
+Anserini's default analyzer:
+
+```java
+public static final Analyzer DEFAULT_ANALYZER = 
+    DefaultEnglishAnalyzer.newDefaultInstance();
+```
+
+This analyzer:
+- Uses Porter stemmer (default)
+- Removes English stopwords
+- Lowercases all terms
+
+### Analyzer Options
+
+```bash
+# Use Krovetz stemmer instead of Porter
+-stemmer krovetz
+
+# Keep stopwords
+-keepStopwords
+
+# Use custom stopword list
+-stopwords /path/to/stopwords.txt
+
+# No stemming
+-stemmer none
+
+# Different language
+-language de  # German
+```
+
+### Why Analysis Matters
+
+Without stemming, "running" and "run" are different terms. A query for "run" wouldn't match documents about "running". Proper analysis increases recall.
+
+```java
+// Example: analyzing a query
+String query = "Running shoes for marathon training";
+
+// After analysis: ["run", "shoe", "marathon", "train"]
+// Now matches documents containing "runner", "trains", "marathons"
+```
+
+## Index Options
+
+Anserini provides flags to control what's stored in the index:
+
+### -storePositions
+
+Enables **positional indexes** - tracks where terms appear in documents.
+
+```bash
+-storePositions
+```
+
+**Required for**:
+- Phrase queries ("information retrieval")
+- Proximity queries ("neural NEAR ranking")
+- Passage highlighting
+
+**Trade-off**: Larger index size (~2x)
+
+### -storeDocvectors  
+
+Stores **term vectors** - complete term statistics per document.
+
+```bash
+-storeDocvectors
+```
+
+**Required for**:
+- Pseudo-relevance feedback (RM3, Rocchio)
+- Query expansion
+- Document similarity
+- Learning-to-rank features
+
+**Trade-off**: Larger index size (~1.5x)
+
+### -storeContents
+
+Stores the **analyzed contents** in the index.
+
+```bash
+-storeContents  
+```
+
+**Useful for**:
+- Retrieving analyzed text
+- Debugging analysis pipeline
+
+### -storeRaw
+
+Stores the **original raw document** in the index.
+
+```bash
+-storeRaw
+```
+
+**Required for**:
+- Displaying original passages to users
+- Neural reranking (needs original text)
+- Extractive question answering
+
+**Trade-off**: Significantly larger index (stores full text)
+
+<Note>
+For MS MARCO passage indexing, the index with all options enabled (`-storePositions -storeDocvectors -storeRaw`) consumes ~4.3 GB for 8.8M passages.
+</Note>
+
+## Collection Types
+
+Anserini supports many collection formats:
+
+```bash
+# JSON Lines (one JSON object per line)
+-collection JsonCollection
+
+# TREC format (news, web)
+-collection TrecCollection  
+
+# WARC files (web archives)
+-collection ClueWeb09Collection
+
+# CSV/TSV
+-collection TsvIntCollection
+
+# Twitter JSON  
+-collection TweetCollection
+```
+
+## Prebuilt Indexes
+
+Anserini provides prebuilt indexes for common collections:
+
+```bash
+# Download prebuilt MS MARCO passage index
+wget https://rgw.cs.uwaterloo.ca/pyserini/indexes/lucene-index.msmarco-passage.20201228.tar.gz
+tar xvfz lucene-index.msmarco-passage.20201228.tar.gz
+
+# Use directly without indexing
+bin/run.sh io.anserini.search.SearchCollection \
+  -index lucene-index.msmarco-passage.20201228 \
+  -topics msmarco-passage-dev \
+  -output runs/run.msmarco-passage.bm25.txt
+```
+
+Available prebuilt indexes:
+- MS MARCO passage and document
+- TREC collections (Robust04, Core17, Core18)
+- Wikipedia snapshots
+- Common Crawl samples
+
+## Indexing Performance
+
+### Threading
+
+```bash
+-threads 9  # Use 9 threads for indexing
+```
+
+More threads = faster indexing, but requires more memory.
+
+### Memory Management
+
+Edit `bin/run.sh` to adjust memory:
+
+```bash
+# Increase heap size for large collections
+java -Xms4g -Xmx16g ...
+```
+
+### Typical Performance
+
+MS MARCO passage (8.8M passages):
+- **Modern desktop** (SSD): 2-3 minutes
+- **M2 MacBook Air** (24GB): ~3 minutes  
+- **Threads**: 9
+- **Index size**: 4.3 GB (with all options)
+
+## Index Statistics
+
+After indexing, Anserini reports:
+
+```
+Total 8,841,823 documents indexed in 00:03:24
+```
+
+Inspect index stats:
+
+```bash
+bin/run.sh io.anserini.index.IndexReaderUtils \
+  -index indexes/msmarco-passage/lucene-index \
+  -stats
+
+# Output:
+# Total terms: 182,469,042
+# Unique terms: 2,660,824  
+# Documents: 8,841,823
+```
+
+## Best Practices
+
+<Accordion title="Index Configuration Tips">
+
+1. **Always use `-storeRaw`** if you need to show passages to users or do reranking
+2. **Use `-storePositions`** unless you're sure you don't need phrase queries  
+3. **Enable `-storeDocvectors`** for pseudo-relevance feedback
+4. **Choose the right analyzer** for your language and use case
+5. **Use enough threads** to parallelize, but not so many you run out of memory
+6. **SSDs are highly recommended** for both indexing and searching
+7. **Prebuilt indexes** save time for standard collections
+
+</Accordion>
+
+## Next Steps
+
+Now that you understand indexing, learn about:
+- [Searching](/concepts/searching) - Query processing and ranking
+- [Evaluation](/concepts/evaluation) - Measuring retrieval effectiveness

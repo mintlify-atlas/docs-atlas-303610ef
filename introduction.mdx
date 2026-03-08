@@ -1,0 +1,138 @@
+---
+title: "Introduction"
+description: "A Lucene toolkit for reproducible information retrieval research"
+---
+
+<div style={{
+  background: 'linear-gradient(135deg, #242b2c 0%, #040404 100%)',
+  borderRadius: '12px',
+  padding: '3rem 2rem',
+  marginBottom: '2rem',
+  border: '1px solid rgba(106, 106, 109, 0.3)'
+}}>
+  <h1 style={{
+    fontSize: '3rem',
+    fontWeight: '700',
+    marginBottom: '1rem',
+    color: '#ffffff'
+  }}>
+    Anserini
+  </h1>
+  <p style={{
+    fontSize: '1.25rem',
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: '2rem',
+    maxWidth: '800px'
+  }}>
+    A Lucene toolkit for reproducible information retrieval research. Build on Lucene to bridge the gap between academic IR research and real-world search applications.
+  </p>
+</div>
+
+## What is Anserini?
+
+Anserini is an open-source information retrieval toolkit built on Apache Lucene. It provides researchers and developers with a comprehensive platform for:
+
+- **Reproducible IR Research** — End-to-end regression testing ensures experiments are reproducible
+- **Multiple Retrieval Models** — BM25, dense vectors, learned sparse representations, and hybrid approaches
+- **Prebuilt Indexes** — Ready-to-use indexes for MS MARCO, BEIR, and TREC collections
+- **Neural Encoders** — Integration with modern dense and sparse encoders including SPLADE, BGE, and ONNX models
+- **Production-Ready** — Published to Maven Central as a library and available as a self-contained fatjar
+
+<CardGroup cols={2}>
+  <Card title="Get Started" icon="rocket" href="/quickstart">
+    Run your first BM25 retrieval in minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Anserini with Java and Maven
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/indexing/index-collection">
+    Explore the complete Java API
+  </Card>
+  <Card title="Regressions" icon="flask" href="/regressions/overview">
+    Learn about reproducible experiments
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Sparse Retrieval" icon="magnifying-glass" href="/search/sparse-retrieval">
+    Traditional BM25 and learned sparse models like SPLADE and uniCOIL
+  </Card>
+  <Card title="Dense Retrieval" icon="brain" href="/search/dense-retrieval">
+    Vector search with HNSW and flat indexes using BGE, DPR, and custom encoders
+  </Card>
+  <Card title="Prebuilt Indexes" icon="database" href="/indexing/prebuilt-indexes">
+    Download ready-to-use indexes for common IR test collections
+  </Card>
+  <Card title="Regression Testing" icon="vial" href="/regressions/overview">
+    Comprehensive end-to-end regression framework for reproducibility
+  </Card>
+</CardGroup>
+
+## Quick Example
+
+Run BM25 retrieval on MS MARCO passage corpus using the fatjar:
+
+```bash
+# Download the fatjar
+wget https://repo1.maven.org/maven2/io/anserini/anserini/1.6.0/anserini-1.6.0-fatjar.jar
+
+# Run BM25 search
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco-v1-passage.dev.bm25.txt \
+  -bm25
+
+# Evaluate results
+java -cp anserini-1.6.0-fatjar.jar trec_eval -c -M 10 -m recip_rank \
+  msmarco-v1-passage.dev run.msmarco-v1-passage.dev.bm25.txt
+```
+
+Expected MRR@10: **0.1840**
+
+## Why Anserini?
+
+<AccordionGroup>
+  <Accordion title="Reproducibility First">
+    Anserini is designed from the ground up for reproducible research. Every regression experiment can be reproduced exactly, with automated verification of effectiveness scores.
+  </Accordion>
+  
+  <Accordion title="Battle-Tested at Scale">
+    Built on Apache Lucene 9.9.1, Anserini inherits decades of production-hardened search technology used by organizations worldwide.
+  </Accordion>
+  
+  <Accordion title="Modern Neural IR">
+    Native support for dense vector search, learned sparse representations, and ONNX model integration brings state-of-the-art neural IR to a proven Lucene foundation.
+  </Accordion>
+  
+  <Accordion title="Research to Production">
+    Anserini bridges the gap between academic IR research and real-world applications. Experiments run in Anserini can inform production search systems.
+  </Accordion>
+</AccordionGroup>
+
+## Research Impact
+
+Anserini grew out of a reproducibility study of open-source retrieval engines in 2016. The toolkit has been cited in hundreds of research papers and powers IR experiments at universities and research labs worldwide.
+
+<Card title="Read the Papers" icon="book-open" href="https://dl.acm.org/doi/10.1145/3239571">
+  See the JDIQ 2018 paper for an overview of Anserini's design and goals
+</Card>
+
+## Related Projects
+
+Anserini is part of a broader ecosystem:
+
+- **[Pyserini](http://pyserini.io/)** — Python interface to Anserini with additional features
+- **Lucene** — The underlying search library powering Anserini
+- **TREC** — Standard IR evaluation campaigns that Anserini supports
+
+<CardGroup cols={2}>
+  <Card title="Pyserini Integration" icon="python" href="/guides/pyserini-integration">
+    Learn how Anserini and Pyserini work together
+  </Card>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/castorini/anserini">
+    View the source code and contribute
+  </Card>
+</CardGroup>

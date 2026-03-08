@@ -1,0 +1,253 @@
+---
+title: Sparse Retrieval
+description: Traditional and learned sparse retrieval methods in Anserini
+---
+
+Sparse retrieval uses term-based representations where documents and queries are represented by sparse vectors. Anserini supports both traditional bag-of-words models and modern learned sparse representations.
+
+## Traditional Sparse Retrieval
+
+### BM25 (Best Match 25)
+
+BM25 is the most widely used sparse retrieval model. Anserini uses default parameters of `k1=0.9` and `b=0.4` based on research by Trotman et al. (SIGIR 2012).
+
+<CodeGroup>
+```bash Basic BM25
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.bm25.txt \
+  -bm25
+```
+
+```bash Custom Parameters
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.bm25-custom.txt \
+  -bm25 -bm25.k1 1.2 -bm25.b 0.75
+```
+
+```bash Accurate BM25
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.bm25-accurate.txt \
+  -bm25.accurate
+```
+</CodeGroup>
+
+<Note>
+The `-bm25.accurate` option uses accurate document lengths at the cost of slower retrieval. Regular BM25 uses approximate document lengths for better performance.
+</Note>
+
+**Expected Results (MS MARCO Passage Dev):**
+- BM25 (k1=0.9, b=0.4): **MRR@10 = 0.1840**
+
+### Query Likelihood Models
+
+Anserini supports language modeling approaches with Dirichlet and Jelinek-Mercer smoothing.
+
+<Tabs>
+  <Tab title="Dirichlet Smoothing">
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.qld.txt \
+  -qld -qld.mu 1000
+```
+
+Dirichlet smoothing uses a parameter `mu` (default: 1000) that controls the amount of smoothing. Larger values provide more smoothing and are safer for long queries.
+  </Tab>
+  
+  <Tab title="Jelinek-Mercer Smoothing">
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.qljm.txt \
+  -qljm -qljm.lambda 0.1
+```
+
+Jelinek-Mercer smoothing uses lambda (default: 0.1) to interpolate between document and collection language models.
+  </Tab>
+</Tabs>
+
+### Other Sparse Models
+
+Anserini includes additional Lucene-based ranking models from DFR and axiomatic frameworks.
+
+<CodeGroup>
+```bash I(n)L2
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.inl2.txt \
+  -inl2 -inl2.c 0.1
+```
+
+```bash SPL
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.spl.txt \
+  -spl -spl.c 0.1
+```
+
+```bash F2EXP
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.f2exp.txt \
+  -f2exp -f2exp.s 0.5
+```
+</CodeGroup>
+
+## Learned Sparse Retrieval
+
+Learned sparse representations use neural models to generate weighted term vectors. Unlike dense embeddings, these representations remain interpretable and can leverage inverted indexes.
+
+### SPLADE-v3
+
+SPLADE (Sparse Lexical AnD Expansion) learns to expand queries and documents with related terms while maintaining sparsity.
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage.splade-v3 \
+  -topics msmarco-v1-passage.dev \
+  -encoder SpladeV3 \
+  -output run.msmarco.splade-v3.txt \
+  -impact -pretokenized
+```
+
+**Expected Results:**
+- SPLADE-v3: **MRR@10 = 0.4000**
+
+<Note>
+The `-impact` flag tells Anserini to use impact scores (weighted term frequencies) rather than traditional BM25 scoring. The `-pretokenized` flag indicates the index already contains encoded representations.
+</Note>
+
+### SPLADE++ Variants
+
+<Tabs>
+  <Tab title="CoCondenser-EnsembleDistil">
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage.splade-pp-ed \
+  -topics msmarco-v1-passage.dev \
+  -encoder SpladePlusPlusEnsembleDistil \
+  -output run.msmarco.splade-pp-ed.txt \
+  -impact -pretokenized
+```
+
+**MRR@10 = 0.3830**
+  </Tab>
+  
+  <Tab title="CoCondenser-SelfDistil">
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage.splade-pp-sd \
+  -topics msmarco-v1-passage.dev \
+  -encoder SpladePlusPlusSelfDistil \
+  -output run.msmarco.splade-pp-sd.txt \
+  -impact -pretokenized
+```
+
+**MRR@10 = 0.3830**
+  </Tab>
+</Tabs>
+
+### uniCOIL
+
+uniCOIL uses a single encoder for both queries and documents, producing impact scores for each term.
+
+<CodeGroup>
+```bash uniCOIL (no expansion)
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage.unicoil-noexp \
+  -topics msmarco-v1-passage.dev \
+  -encoder UniCoil \
+  -output run.msmarco.unicoil-noexp.txt \
+  -impact -pretokenized
+```
+
+```bash uniCOIL + doc2query-T5
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage.unicoil \
+  -topics msmarco-v1-passage.dev \
+  -encoder UniCoil \
+  -output run.msmarco.unicoil.txt \
+  -impact -pretokenized
+```
+</CodeGroup>
+
+**Expected Results:**
+- uniCOIL (no expansion): **MRR@10 = 0.3508**
+- uniCOIL + doc2query-T5: **MRR@10 = 0.3520**
+
+### DeepImpact
+
+DeepImpact learns document term weights using BERT-based models.
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage.deepimpact \
+  -topics msmarco-v1-passage.dev \
+  -encoder DeepImpact \
+  -output run.msmarco.deepimpact.txt \
+  -impact -pretokenized
+```
+
+## Sequential Dependence Model (SDM)
+
+SDM extends bag-of-words retrieval by considering term proximity through ordered and unordered windows.
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.sdm.txt \
+  -bm25 -sdm
+```
+
+Customize weights with:
+- `-sdm.tw` (term weight, default: 0.85)
+- `-sdm.ow` (ordered window weight, default: 0.1) 
+- `-sdm.uw` (unordered window weight, default: 0.05)
+
+## Performance Comparison
+
+| Method | Type | MRR@10 (MS MARCO) |
+|--------|------|------------------|
+| BM25 | Traditional | 0.1840 |
+| uniCOIL (noexp) | Learned Sparse | 0.3508 |
+| uniCOIL + doc2query | Learned Sparse | 0.3520 |
+| SPLADE++ ED | Learned Sparse | 0.3830 |
+| SPLADE-v3 | Learned Sparse | **0.4000** |
+
+<Note>
+Learned sparse methods significantly outperform traditional BM25 while maintaining the efficiency of inverted indexes and interpretability of term-based retrieval.
+</Note>
+
+## Command-Line Options
+
+Key options from `SearchCollection.java:137-351`:
+
+| Option | Description | Default |
+|--------|-------------|--------|
+| `-index` | Path to index | Required |
+| `-topics` | Topics file | Required |
+| `-output` | Output run file | Required |
+| `-bm25` | Use BM25 scoring | - |
+| `-bm25.k1` | BM25 k1 parameter | 0.9 |
+| `-bm25.b` | BM25 b parameter | 0.4 |
+| `-qld` | Query likelihood Dirichlet | - |
+| `-qld.mu` | Dirichlet mu parameter | 1000 |
+| `-impact` | Use impact scores | - |
+| `-encoder` | Query encoder class | - |
+| `-pretokenized` | Index is pretokenized | false |
+| `-hits` | Max hits to return | 1000 |
+| `-threads` | Parallel threads | 1 |
+
+See `SearchCollection.java` for the complete list of options.

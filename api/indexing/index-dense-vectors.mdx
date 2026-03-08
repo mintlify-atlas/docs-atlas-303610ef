@@ -1,0 +1,387 @@
+---
+title: Dense Vector Indexing
+description: API reference for indexing dense vectors with HNSW and flat indexes
+---
+
+## Overview
+
+Anserini provides two classes for indexing dense vector embeddings:
+
+- **IndexHnswDenseVectors**: Creates HNSW (Hierarchical Navigable Small World) indexes for efficient approximate nearest neighbor search
+- **IndexFlatDenseVectors**: Creates flat indexes for exact nearest neighbor search
+
+Both classes extend `AbstractIndexer` and use Lucene's vector search capabilities.
+
+**Package:** `io.anserini.index`
+
+---
+
+## IndexHnswDenseVectors
+
+Creates HNSW indexes optimized for fast approximate vector search.
+
+### Constructor
+
+```java
+public IndexHnswDenseVectors(IndexHnswDenseVectors.Args args) throws Exception
+```
+
+<ParamField path="args" type="IndexHnswDenseVectors.Args" required>
+  Configuration object containing HNSW indexing parameters
+</ParamField>
+
+### Configuration (Args Class)
+
+Extends `AbstractIndexer.Args` with HNSW-specific parameters.
+
+#### Base Parameters (from AbstractIndexer.Args)
+
+<ParamField path="collectionClass" type="String" required>
+  Collection class name (typically "JsonDenseVectorCollection" or "ParquetDenseVectorCollection")
+</ParamField>
+
+<ParamField path="input" type="String" required>
+  Path to the input vector collection
+</ParamField>
+
+<ParamField path="index" type="String" required>
+  Path where the HNSW index will be created
+</ParamField>
+
+<ParamField path="threads" type="int" default="4">
+  Number of indexing threads
+</ParamField>
+
+<ParamField path="memoryBuffer" type="int" default="4096">
+  Memory buffer size in MB
+</ParamField>
+
+<ParamField path="optimize" type="boolean" default="false">
+  Merge into single segment after indexing
+</ParamField>
+
+#### HNSW-Specific Parameters
+
+<ParamField path="generator" type="String" default="DenseVectorDocumentGenerator">
+  Document generator class in `io.anserini.index.generator`
+</ParamField>
+
+<ParamField path="M" type="int" default="16">
+  HNSW graph connectivity parameter (higher = more accurate but larger index)
+</ParamField>
+
+<ParamField path="efC" type="int" default="100">
+  HNSW construction parameter (higher = better quality but slower indexing)
+</ParamField>
+
+<ParamField path="quantizeInt8" type="boolean" default="false">
+  Quantize vectors to int8 for reduced memory footprint
+</ParamField>
+
+<ParamField path="storeVectors" type="boolean" default="false">
+  Store raw vectors in the index
+</ParamField>
+
+<ParamField path="noMerge" type="boolean" default="false">
+  Disable segment merging (faster indexing, slower retrieval)
+</ParamField>
+
+<ParamField path="maxThreadMemoryBeforeFlush" type="int" default="2047">
+  Maximum memory per thread before forced flush (MB, must be < 2048)
+</ParamField>
+
+<ParamField path="maxMergedSegmentSize" type="int" default="16384">
+  Maximum segment size during merging (MB)
+</ParamField>
+
+<ParamField path="segmentsPerTier" type="int" default="10">
+  Number of segments allowed per tier in merge policy
+</ParamField>
+
+<ParamField path="maxMergeAtOnce" type="int" default="10">
+  Maximum segments to merge at once
+</ParamField>
+
+### Usage Examples
+
+#### Basic HNSW Indexing
+
+```java
+import io.anserini.index.IndexHnswDenseVectors;
+
+public class BasicHnswIndexing {
+    public static void main(String[] args) throws Exception {
+        IndexHnswDenseVectors.Args indexArgs = new IndexHnswDenseVectors.Args();
+        
+        // Required parameters
+        indexArgs.collectionClass = "JsonDenseVectorCollection";
+        indexArgs.input = "/path/to/vectors";
+        indexArgs.index = "/path/to/hnsw-index";
+        
+        // HNSW parameters (defaults are reasonable for most cases)
+        indexArgs.M = 16;          // Graph connectivity
+        indexArgs.efC = 100;       // Construction beam width
+        
+        // Create and run the indexer
+        IndexHnswDenseVectors indexer = new IndexHnswDenseVectors(indexArgs);
+        indexer.run();
+        
+        System.out.println("HNSW indexing complete!");
+    }
+}
+```
+
+#### High-Accuracy HNSW Index
+
+```java
+import io.anserini.index.IndexHnswDenseVectors;
+
+public class HighAccuracyHnsw {
+    public static void main(String[] args) throws Exception {
+        IndexHnswDenseVectors.Args indexArgs = new IndexHnswDenseVectors.Args();
+        
+        indexArgs.collectionClass = "JsonDenseVectorCollection";
+        indexArgs.input = "/path/to/vectors";
+        indexArgs.index = "/path/to/index";
+        
+        // Higher values for better recall
+        indexArgs.M = 32;           // More connections per node
+        indexArgs.efC = 200;        // Larger construction beam
+        
+        // Optimize for single segment
+        indexArgs.optimize = true;
+        
+        // Use more memory for faster indexing
+        indexArgs.memoryBuffer = 16384;  // 16 GB
+        indexArgs.threads = 16;
+        
+        IndexHnswDenseVectors indexer = new IndexHnswDenseVectors(indexArgs);
+        indexer.run();
+    }
+}
+```
+
+#### Quantized HNSW Index
+
+```java
+import io.anserini.index.IndexHnswDenseVectors;
+
+public class QuantizedHnsw {
+    public static void main(String[] args) throws Exception {
+        IndexHnswDenseVectors.Args indexArgs = new IndexHnswDenseVectors.Args();
+        
+        indexArgs.collectionClass = "ParquetDenseVectorCollection";
+        indexArgs.input = "/path/to/vectors.parquet";
+        indexArgs.index = "/path/to/index";
+        
+        // Enable int8 quantization for 4x size reduction
+        indexArgs.quantizeInt8 = true;
+        
+        // Store original vectors for reranking
+        indexArgs.storeVectors = true;
+        
+        indexArgs.M = 16;
+        indexArgs.efC = 100;
+        
+        IndexHnswDenseVectors indexer = new IndexHnswDenseVectors(indexArgs);
+        indexer.run();
+    }
+}
+```
+
+---
+
+## IndexFlatDenseVectors
+
+Creates flat indexes for exact nearest neighbor search (brute force).
+
+### Constructor
+
+```java
+public IndexFlatDenseVectors(IndexFlatDenseVectors.Args args)
+```
+
+<ParamField path="args" type="IndexFlatDenseVectors.Args" required>
+  Configuration object for flat indexing
+</ParamField>
+
+### Configuration (Args Class)
+
+Extends `AbstractIndexer.Args` with flat index parameters.
+
+#### Base Parameters
+
+Same as `IndexHnswDenseVectors` (collectionClass, input, index, threads, memoryBuffer, optimize)
+
+#### Flat Index-Specific Parameters
+
+<ParamField path="generator" type="String" default="DenseVectorDocumentGenerator">
+  Document generator class
+</ParamField>
+
+<ParamField path="quantizeInt8" type="boolean" default="false">
+  Quantize vectors to int8
+</ParamField>
+
+<ParamField path="storeVectors" type="boolean" default="false">
+  Store raw vectors in the index
+</ParamField>
+
+<ParamField path="docidField" type="String" default="docid">
+  Name of the document ID field in Parquet files
+</ParamField>
+
+<ParamField path="vectorField" type="String" default="vector">
+  Name of the vector field in Parquet files
+</ParamField>
+
+<ParamField path="normalizeVectors" type="boolean" default="false">
+  Normalize vectors to unit length during indexing
+</ParamField>
+
+### Usage Examples
+
+#### Basic Flat Indexing
+
+```java
+import io.anserini.index.IndexFlatDenseVectors;
+
+public class BasicFlatIndexing {
+    public static void main(String[] args) throws Exception {
+        IndexFlatDenseVectors.Args indexArgs = new IndexFlatDenseVectors.Args();
+        
+        // Required parameters
+        indexArgs.collectionClass = "JsonDenseVectorCollection";
+        indexArgs.input = "/path/to/vectors";
+        indexArgs.index = "/path/to/flat-index";
+        
+        // Create and run the indexer
+        IndexFlatDenseVectors indexer = new IndexFlatDenseVectors(indexArgs);
+        indexer.run();
+        
+        System.out.println("Flat indexing complete!");
+    }
+}
+```
+
+#### Flat Index with Normalized Vectors
+
+```java
+import io.anserini.index.IndexFlatDenseVectors;
+
+public class NormalizedFlatIndex {
+    public static void main(String[] args) throws Exception {
+        IndexFlatDenseVectors.Args indexArgs = new IndexFlatDenseVectors.Args();
+        
+        indexArgs.collectionClass = "ParquetDenseVectorCollection";
+        indexArgs.input = "/path/to/vectors.parquet";
+        indexArgs.index = "/path/to/index";
+        
+        // Normalize vectors for cosine similarity
+        indexArgs.normalizeVectors = true;
+        
+        // Store raw vectors
+        indexArgs.storeVectors = true;
+        
+        IndexFlatDenseVectors indexer = new IndexFlatDenseVectors(indexArgs);
+        indexer.run();
+    }
+}
+```
+
+#### Parquet with Custom Field Names
+
+```java
+import io.anserini.index.IndexFlatDenseVectors;
+
+public class CustomFieldsFlat {
+    public static void main(String[] args) throws Exception {
+        IndexFlatDenseVectors.Args indexArgs = new IndexFlatDenseVectors.Args();
+        
+        indexArgs.collectionClass = "ParquetDenseVectorCollection";
+        indexArgs.input = "/path/to/embeddings.parquet";
+        indexArgs.index = "/path/to/index";
+        
+        // Customize Parquet field names
+        indexArgs.docidField = "id";
+        indexArgs.vectorField = "embedding";
+        
+        // Enable quantization
+        indexArgs.quantizeInt8 = true;
+        
+        IndexFlatDenseVectors indexer = new IndexFlatDenseVectors(indexArgs);
+        indexer.run();
+    }
+}
+```
+
+## CLI Usage
+
+### HNSW Index
+
+```bash
+java -cp anserini-fatjar.jar io.anserini.index.IndexHnswDenseVectors \
+  -collection JsonDenseVectorCollection \
+  -input /path/to/vectors \
+  -index /path/to/hnsw-index \
+  -threads 16 \
+  -M 16 -efC 100 \
+  -memoryBuffer 8192
+```
+
+### Flat Index
+
+```bash
+java -cp anserini-fatjar.jar io.anserini.index.IndexFlatDenseVectors \
+  -collection ParquetDenseVectorCollection \
+  -input /path/to/vectors.parquet \
+  -index /path/to/flat-index \
+  -threads 8 \
+  -normalizeVectors -storeVectors
+```
+
+## HNSW vs Flat: When to Use
+
+### Use HNSW when:
+- You have millions of vectors or more
+- You need fast query times
+- You can accept approximate results (typically 95-99% recall)
+- Memory efficiency is important
+
+### Use Flat when:
+- You have fewer than 1M vectors
+- You need exact nearest neighbors
+- Query latency is not critical
+- You're creating a ground truth dataset
+
+## Parameter Tuning Guidelines
+
+### HNSW Parameters
+
+**M (graph connectivity)**
+- Default: 16
+- Range: 8-64
+- Higher values → better recall, larger index, slower indexing
+- Recommended: 16 for general use, 32 for high accuracy
+
+**efC (construction beam width)**
+- Default: 100
+- Range: 50-500
+- Higher values → better index quality, slower indexing
+- Recommended: 100 for general use, 200+ for high accuracy
+
+### Quantization
+
+**Int8 Quantization**
+- Reduces index size by approximately 4x
+- Minimal accuracy loss (typically less than 1% recall drop)
+- Faster search due to reduced memory bandwidth
+- Recommended for production deployments
+
+## Notes
+
+- Both classes support vectors up to 4096 dimensions (configurable via `DelegatingKnnVectorsFormat`)
+- HNSW uses Lucene's `Lucene99HnswVectorsFormat` or `Lucene99HnswScalarQuantizedVectorsFormat`
+- Flat indexes use custom `AnseriniLucene99FlatVectorFormat` for exact search
+- Vector normalization is applied during indexing, not at query time
+- For Parquet files, ensure column names match `docidField` and `vectorField` parameters

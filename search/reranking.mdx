@@ -1,0 +1,458 @@
+---
+title: Query Reranking
+description: Pseudo-relevance feedback and neural reranking methods in Anserini
+---
+
+Reranking refines initial retrieval results by applying more sophisticated (and expensive) scoring methods. Anserini supports pseudo-relevance feedback (PRF) rerankers that expand queries using top-retrieved documents.
+
+## Why Rerank?
+
+Reranking improves retrieval through:
+
+1. **Query expansion** - Add terms from relevant documents to capture more aspects
+2. **Vocabulary enrichment** - Bridge the vocabulary gap between queries and documents  
+3. **Context incorporation** - Use collection statistics from pseudo-relevant docs
+
+<Note>
+Reranking typically improves Mean Average Precision (MAP) by 10-30% on standard test collections, with larger gains on difficult queries.
+</Note>
+
+## Relevance Model 3 (RM3)
+
+RM3 is the most widely used PRF method. It estimates a relevance model from top-retrieved documents and interpolates it with the original query.
+
+### Basic Usage
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.bm25+rm3.txt \
+  -bm25 -rm3
+```
+
+### RM3 Parameters
+
+Anserini uses the same defaults as Indri (from `SearchCollection.java:373-402`):
+
+<CodeGroup>
+```bash Default RM3
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.bm25+rm3.txt \
+  -bm25 -rm3
+```
+
+```bash Custom Parameters
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.bm25+rm3-custom.txt \
+  -bm25 -rm3 \
+  -rm3.fbTerms 20 \
+  -rm3.fbDocs 15 \
+  -rm3.originalQueryWeight 0.6
+```
+</CodeGroup>
+
+| Parameter | Description | Default |
+|-----------|-------------|--------|
+| `-rm3.fbTerms` | Number of expansion terms | 10 |
+| `-rm3.fbDocs` | Number of feedback documents | 10 |
+| `-rm3.originalQueryWeight` | Weight for original query | 0.5 |
+
+<Note>
+From `Rm3Reranker.java:67-76`: The reranker interpolates the original query vector with a relevance model estimated from top documents, then re-scores the collection.
+</Note>
+
+### RM3 Algorithm
+
+From `Rm3Reranker.java:79-100`, RM3 works as follows:
+
+<Steps>
+  <Step title="Initial Retrieval">
+    Retrieve top-k documents with BM25 or other base ranker
+  </Step>
+  
+  <Step title="Relevance Model Estimation">
+    Build term distribution from feedback documents:
+    ```
+    P(w | R) ∝ Σ P(w | d) × P(d | q)
+    ```
+    Where d ranges over feedback documents
+  </Step>
+  
+  <Step title="Query Interpolation">
+    Combine original and expanded query:
+    ```
+    q_new = λ × q_original + (1 - λ) × RM
+    ```
+    Default λ = 0.5 (originalQueryWeight)
+  </Step>
+  
+  <Step title="Re-ranking">
+    Score documents with expanded query and return top results
+  </Step>
+</Steps>
+
+## Rocchio Algorithm
+
+Rocchio is a vector-space reranking method that adjusts the query vector toward relevant documents and away from non-relevant ones.
+
+### Usage
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.bm25+rocchio.txt \
+  -bm25 -rocchio
+```
+
+### Rocchio Parameters
+
+From `SearchCollection.java:407-449`:
+
+<CodeGroup>
+```bash Default Rocchio
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.bm25+rocchio.txt \
+  -bm25 -rocchio
+```
+
+```bash Rocchio with Negative Feedback
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.bm25+rocchio-neg.txt \
+  -bm25 -rocchio \
+  -rocchio.useNegative \
+  -rocchio.alpha 1.0 \
+  -rocchio.beta 0.75 \
+  -rocchio.gamma 0.15
+```
+</CodeGroup>
+
+| Parameter | Description | Default |
+|-----------|-------------|--------|
+| `-rocchio.topFbTerms` | Expansion terms from relevant docs | 10 |
+| `-rocchio.topFbDocs` | Number of relevant feedback docs | 10 |
+| `-rocchio.bottomFbTerms` | Terms from non-relevant docs | 10 |
+| `-rocchio.bottomFbDocs` | Number of non-relevant docs | 10 |
+| `-rocchio.alpha` | Weight for original query | 1.0 |
+| `-rocchio.beta` | Weight for relevant docs | 0.75 |
+| `-rocchio.gamma` | Weight for non-relevant docs | 0.15 |
+| `-rocchio.useNegative` | Use negative feedback | false |
+
+### Rocchio Formula
+
+From `RocchioReranker.java:92-96`, the classic Rocchio formula:
+
+```
+q_new = α × q + β × (1/|R|) × Σ d_r - γ × (1/|N|) × Σ d_n
+```
+
+Where:
+- `q` = original query vector
+- `d_r` = relevant document vectors
+- `d_n` = non-relevant document vectors
+- `|R|`, `|N|` = number of relevant/non-relevant docs
+
+<Note>
+Rocchio uses L2-normalized vectors (`RocchioReranker.java:96`), while RM3 uses L1 normalization. This affects how term weights are distributed.
+</Note>
+
+## BM25PRF
+
+BM25PRF (BM25 Pseudo-Relevance Feedback) expands queries using a specialized BM25 scoring of feedback terms.
+
+### Usage
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.bm25+prf.txt \
+  -bm25 -bm25prf
+```
+
+### BM25PRF Parameters
+
+From `SearchCollection.java:451-480`:
+
+<CodeGroup>
+```bash Default BM25PRF
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.bm25+prf.txt \
+  -bm25 -bm25prf
+```
+
+```bash Tuned BM25PRF
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.bm25+prf-tuned.txt \
+  -bm25 -bm25prf \
+  -bm25prf.fbTerms 30 \
+  -bm25prf.fbDocs 15 \
+  -bm25prf.newTermWeight 0.3
+```
+</CodeGroup>
+
+| Parameter | Description | Default |
+|-----------|-------------|--------|
+| `-bm25prf.fbTerms` | Number of expansion terms | 20 |
+| `-bm25prf.fbDocs` | Number of feedback docs | 10 |
+| `-bm25prf.k1` | BM25 k1 for expansion | 0.9 |
+| `-bm25prf.b` | BM25 b for expansion | 0.4 |
+| `-bm25prf.newTermWeight` | Weight for expansion terms | 0.2 |
+
+### BM25PRF Mechanism
+
+From `BM25PrfReranker.java:55-100`, BM25PRF:
+
+1. Uses a modified BM25Similarity without IDF (`BM25PrfSimilarity.java:63-65`)
+2. Scores terms in feedback documents using this modified BM25
+3. Selects top-k expansion terms by score
+4. Combines original and expansion terms with configurable weights
+
+<Note>
+BM25PRF defaults to 20 expansion terms (vs 10 for RM3), reflecting that BM25 scoring provides more discriminative term selection.
+</Note>
+
+## Axiomatic Reranking
+
+Axiomatic reranking applies semantic term matching based on axiomatic retrieval principles.
+
+### Usage
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.msmarco.bm25+axiom.txt \
+  -bm25 -axiom \
+  -axiom.deterministic -axiom.beta 0.4
+```
+
+### Axiom Parameters
+
+From `SearchCollection.java:482-515`:
+
+| Parameter | Description | Default |
+|-----------|-------------|--------|
+| `-axiom.r` | Number of top documents | 20 |
+| `-axiom.n` | Pool size for reranking | 30 |
+| `-axiom.beta` | Scaling parameter | 0.4 |
+| `-axiom.top` | Number of expansion terms | 20 |
+| `-axiom.deterministic` | Deterministic mode | false |
+| `-axiom.seed` | Random seed | 42 |
+| `-axiom.docids` | Docids file for determinism | null |
+
+<Note>
+Axiomatic reranking (`AxiomReranker.java`) is more experimental than RM3/Rocchio. Use `-axiom.deterministic` to ensure reproducible results.
+</Note>
+
+## Comparing Rerankers
+
+### Performance Characteristics
+
+| Reranker | Speed | Effectiveness | Best For |
+|----------|-------|--------------|----------|
+| **RM3** | Fast | +10-20% MAP | General purpose, standard benchmark |
+| **Rocchio** | Fast | +10-15% MAP | When negative feedback available |
+| **BM25PRF** | Fast | +15-25% MAP | Term-centric queries |
+| **Axiomatic** | Moderate | Varies | Semantic matching, experimental |
+
+### Typical Improvements
+
+On TREC collections (approximate):
+
+```
+Robust04:
+  BM25:           MAP = 0.2531
+  BM25 + RM3:     MAP = 0.2903  (+14.7%)
+  BM25 + Rocchio: MAP = 0.2876  (+13.6%)
+  BM25 + BM25PRF: MAP = 0.2945  (+16.4%)
+```
+
+## Reranking Pipeline
+
+### Multi-Stage Example
+
+Combine initial retrieval → PRF reranking → neural reranking:
+
+<Steps>
+  <Step title="Stage 1: BM25 Retrieval">
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.bm25.txt \
+  -bm25 -hits 1000
+```
+  </Step>
+  
+  <Step title="Stage 2: RM3 Reranking">
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.bm25+rm3.txt \
+  -bm25 -rm3 -hits 1000
+```
+  </Step>
+  
+  <Step title="Stage 3: Neural Reranking">
+Apply cross-encoder (e.g., monoT5, BERT reranker) on top-100:
+
+```python
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import torch
+
+# Load reranker
+tokenizer = AutoTokenizer.from_pretrained('cross-encoder/ms-marco-MiniLM-L-6-v2')
+model = AutoModelForSequenceClassification.from_pretrained('cross-encoder/ms-marco-MiniLM-L-6-v2')
+
+# Rerank top-100 from RM3
+for query, docs in rm3_results[:100]:
+    inputs = tokenizer([query]*len(docs), docs, padding=True, truncation=True, return_tensors='pt')
+    scores = model(**inputs).logits.squeeze(-1)
+    # Re-sort by neural scores
+```
+  </Step>
+</Steps>
+
+## Using Qrels for Feedback
+
+When relevance judgments are available (e.g., for training), use them for feedback:
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.train \
+  -output run.supervised-rf.txt \
+  -bm25 -rm3 \
+  -rf.qrels qrels.msmarco-v1-passage.train.txt
+```
+
+The `-rf.qrels` option (`SearchCollection.java:232`) uses actual relevant documents instead of pseudo-relevant ones.
+
+<Warning>
+Using qrels from your test set would be cheating! Only use qrels from a separate training set.
+</Warning>
+
+## Implementation Details
+
+### Reranker Architecture
+
+From `RerankerCascade.java` and `Reranker.java`, Anserini's reranking uses a pipeline pattern:
+
+```java
+// Simplified architecture
+public interface Reranker<T> {
+  ScoredDocs rerank(ScoredDocs docs, RerankerContext<T> context);
+}
+
+public class RerankerCascade<T> {
+  List<Reranker<T>> rerankers;
+  
+  public ScoredDocs run(ScoredDocs docs, RerankerContext<T> context) {
+    for (Reranker<T> reranker : rerankers) {
+      docs = reranker.rerank(docs, context);
+    }
+    return docs;
+  }
+}
+```
+
+This allows chaining multiple rerankers sequentially.
+
+### Adding Custom Rerankers
+
+Implement the `Reranker` interface:
+
+```java
+public class MyReranker<T> implements Reranker<T> {
+  @Override
+  public ScoredDocs rerank(ScoredDocs docs, RerankerContext<T> context) {
+    // Custom reranking logic
+    IndexSearcher searcher = context.getIndexSearcher();
+    Query query = context.getQuery();
+    
+    // Re-score documents
+    for (int i = 0; i < docs.ids.length; i++) {
+      docs.scores[i] = customScore(docs.ids[i], query, searcher);
+    }
+    
+    // Re-sort by new scores
+    return docs.sort();
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="When to use PRF reranking">
+    - Long queries benefit less (already rich)
+    - Short keyword queries benefit most
+    - Homogeneous collections work better
+    - Initial retrieval must be reasonable (>50% recall@1000)
+  </Accordion>
+  
+  <Accordion title="Tuning parameters">
+    - Start with defaults (well-tuned on standard collections)
+    - Increase fbDocs for noisy collections
+    - Increase fbTerms for diverse/multi-aspect queries
+    - Increase originalQueryWeight if expansion hurts (query drift)
+  </Accordion>
+  
+  <Accordion title="Combining multiple rerankers">
+    - Don't chain multiple PRF methods (redundant)
+    - DO: BM25 → RM3 → Neural Reranker ✓
+    - DON'T: BM25 → RM3 → Rocchio → BM25PRF ✗
+  </Accordion>
+</AccordionGroup>
+
+## Performance Tips
+
+1. **Limit initial retrieval depth**: Use `-rerankCutoff` to only rerank top-k:
+   ```bash
+   -bm25 -rm3 -rerankCutoff 100
+   ```
+   This reranks only top-100, not all 1000 retrieved docs.
+
+2. **Parallelize**: Enable multi-threading for large query sets:
+   ```bash
+   -bm25 -rm3 -threads 16
+   ```
+
+3. **Output expanded queries**: Debug with `-rm3.outputQuery` to see expansion terms:
+   ```bash
+   -bm25 -rm3 -rm3.outputQuery
+   ```
+
+## Common Issues
+
+<Warning>
+**Query drift**: If reranking hurts, your feedback documents may be off-topic. Try:
+- Increasing `-rm3.originalQueryWeight` (e.g., 0.7 or 0.8)
+- Reducing `-rm3.fbDocs` to use fewer feedback documents
+- Switching to a different base ranker
+</Warning>
+
+<Note>
+**No improvement on neural retrieval**: PRF reranking was designed for lexical retrieval (BM25). It may not help dense retrieval much, since dense models already perform implicit expansion.
+</Note>
+
+## Related Topics
+
+- [Sparse Retrieval](/search/sparse-retrieval) - BM25 and learned sparse methods
+- [Dense Retrieval](/search/dense-retrieval) - Vector search methods
+- [Hybrid Retrieval](/search/hybrid-retrieval) - Combining sparse and dense

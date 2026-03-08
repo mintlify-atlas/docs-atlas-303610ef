@@ -1,0 +1,314 @@
+---
+title: BEIR Benchmark Regressions
+description: Cross-dataset evaluation with the BEIR (Benchmarking IR) benchmark
+---
+
+## What is BEIR?
+
+**BEIR** (Benchmarking IR) is a heterogeneous benchmark containing diverse information retrieval datasets. It evaluates the zero-shot capabilities of retrieval models across different domains and task types.
+
+BEIR v1.0.0 includes 18 datasets covering:
+- Question answering (Natural Questions, HotpotQA, etc.)
+- Fact verification (FEVER, Climate-FEVER)
+- Citation prediction (SCIDOCS)
+- Duplicate question detection (Quora, CQADupStack)
+- Argument retrieval (ArguAna, Touche-2020)
+- Bio-medical IR (BioASQ, TREC-COVID, NFCorpus)
+- Entity retrieval (DBPedia)
+- And more
+
+## Available BEIR Datasets
+
+Anserini supports all 18 BEIR v1.0.0 datasets:
+
+- **arguana**: Argument retrieval
+- **bioasq**: Biomedical question answering
+- **climate-fever**: Climate science fact verification
+- **cqadupstack** (12 variants): Community question answering
+  - android, english, gaming, gis, mathematica, physics, programmers, stats, tex, unix, webmasters, wordpress
+- **dbpedia-entity**: Entity retrieval
+- **fever**: Fact verification
+- **fiqa**: Financial question answering
+- **hotpotqa**: Multi-hop question answering
+- **msmarco**: Passage ranking (distinct from main MS MARCO regressions)
+- **nfcorpus**: Medical information retrieval
+- **nq**: Natural Questions
+- **quora**: Duplicate question detection
+- **robust04**: News article retrieval
+- **scidocs**: Citation prediction
+- **scifact**: Scientific claim verification
+- **signal1m**: Tweet search
+- **trec-covid**: COVID-19 literature search
+- **trec-news**: Background linking
+- **webis-touche2020**: Argument retrieval
+
+## Downloading BEIR Corpora
+
+All BEIR corpora are available as a single tarball:
+
+```bash
+wget https://rgw.cs.uwaterloo.ca/pyserini/data/beir-v1.0.0-corpus.tar -P collections/
+tar xvf collections/beir-v1.0.0-corpus.tar -C collections/
+```
+
+<Info>
+  The tarball is 14 GB and has MD5 checksum `faefd5281b662c72ce03d22021e4ff6b`.
+</Info>
+
+## Indexing Strategies
+
+Anserini supports multiple indexing strategies for BEIR datasets:
+
+### 1. Flat Indexing
+
+Concatenates the "title" and "text" fields into a single "contents" field:
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-arguana.flat
+```
+
+### 2. Multifield Indexing
+
+Indexes "title" and "text" as separate fields:
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-arguana.multifield
+```
+
+### 3. WordPiece Tokenization
+
+Uses WordPiece tokenization (flat indexing):
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-arguana.flat-wp
+```
+
+## Retrieval Models
+
+### BM25 Baselines
+
+Standard BM25 with tuned parameters:
+
+```bash
+# Flat indexing
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.flat
+
+# Multifield indexing
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.multifield
+```
+
+### Learned Sparse Models
+
+#### UNICOIL
+
+```bash
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.unicoil-noexp.cached
+```
+
+#### SPLADE++ (ED)
+
+```bash
+# Cached representations
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.splade-pp-ed.cached
+
+# ONNX inference
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.splade-pp-ed.onnx
+```
+
+#### SPLADE v3
+
+```bash
+# Cached representations
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.splade-v3.cached
+
+# ONNX inference  
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.splade-v3.onnx
+```
+
+### Dense Retrieval Models
+
+#### BGE-base-en-v1.5
+
+BAA general embedding model with multiple index types:
+
+```bash
+# Flat index with cached queries
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.bge-base-en-v1.5.parquet.flat.cached
+
+# HNSW index with ONNX inference
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.bge-base-en-v1.5.parquet.hnsw.onnx
+
+# Quantized flat index (INT8)
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.bge-base-en-v1.5.parquet.flat-int8.cached
+
+# Quantized HNSW index (INT8)  
+python src/main/python/run_regression.py \
+  --index --verify --search \
+  --regression beir-v1.0.0-scifact.bge-base-en-v1.5.parquet.hnsw-int8.onnx
+```
+
+## Running All BEIR Regressions
+
+### BM25 Flat for All Datasets
+
+```bash
+for dataset in arguana bioasq climate-fever cqadupstack-android \
+  cqadupstack-english cqadupstack-gaming cqadupstack-gis \
+  cqadupstack-mathematica cqadupstack-physics cqadupstack-programmers \
+  cqadupstack-stats cqadupstack-tex cqadupstack-unix \
+  cqadupstack-webmasters cqadupstack-wordpress dbpedia-entity \
+  fever fiqa hotpotqa nfcorpus nq quora robust04 scidocs \
+  scifact signal1m trec-covid trec-news webis-touche2020; do
+  python src/main/python/run_regression.py \
+    --index --verify --search \
+    --regression beir-v1.0.0-${dataset}.flat
+done
+```
+
+### BGE Flat Indexes (Cached)
+
+```bash
+for dataset in arguana bioasq climate-fever cqadupstack-android \
+  cqadupstack-english cqadupstack-gaming dbpedia-entity fever fiqa \
+  hotpotqa nfcorpus nq quora robust04 scidocs scifact signal1m \
+  trec-covid trec-news webis-touche2020; do
+  python src/main/python/run_regression.py \
+    --index --verify --search \
+    --regression beir-v1.0.0-${dataset}.bge-base-en-v1.5.parquet.flat.cached
+done
+```
+
+## Expected Effectiveness
+
+Sample nDCG@10 scores for select datasets (BM25 flat):
+
+| Dataset | nDCG@10 |
+|---------|----------|
+| ArguAna | ~0.397 |
+| TREC-COVID | ~0.656 |
+| NFCorpus | ~0.325 |
+| SciFact | ~0.689 |
+| FiQA | ~0.254 |
+| Natural Questions | ~0.329 |
+| HotpotQA | ~0.633 |
+| Climate-FEVER | ~0.167 |
+| DBPedia Entity | ~0.313 |
+| FEVER | ~0.753 |
+
+<Warning>
+  Exact scores may vary slightly depending on your environment. Run the regressions to get precise values.
+</Warning>
+
+## Evaluation Metrics
+
+BEIR uses the following standard metrics:
+
+- **nDCG@10**: Normalized Discounted Cumulative Gain at rank 10 (primary metric)
+- **Recall@100**: Fraction of relevant documents in top 100
+- **Recall@1000**: Fraction of relevant documents in top 1000
+- **MAP**: Mean Average Precision (for some datasets)
+
+## Typical Indexing Command
+
+Example for ArguAna with flat indexing:
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection \
+  -threads 1 \
+  -collection BeirFlatCollection \
+  -input /path/to/beir-v1.0.0-arguana.flat \
+  -generator DefaultLuceneDocumentGenerator \
+  -index indexes/lucene-inverted.beir-v1.0.0-arguana.flat/ \
+  -storePositions -storeDocvectors -storeRaw
+```
+
+## Typical Retrieval Command
+
+```bash
+bin/run.sh io.anserini.search.SearchCollection \
+  -index indexes/lucene-inverted.beir-v1.0.0-arguana.flat/ \
+  -topics tools/topics-and-qrels/topics.beir-v1.0.0-arguana.test.tsv.gz \
+  -topicReader TsvString \
+  -output runs/run.beir-v1.0.0-arguana.flat.bm25.topics.beir-v1.0.0-arguana.test.txt \
+  -bm25 -removeQuery -hits 1000
+```
+
+## Evaluation
+
+```bash
+bin/trec_eval -c -m ndcg_cut.10 \
+  tools/topics-and-qrels/qrels.beir-v1.0.0-arguana.test.txt \
+  runs/run.beir-v1.0.0-arguana.flat.bm25.topics.beir-v1.0.0-arguana.test.txt
+
+bin/trec_eval -c -m recall.100 \
+  tools/topics-and-qrels/qrels.beir-v1.0.0-arguana.test.txt \
+  runs/run.beir-v1.0.0-arguana.flat.bm25.topics.beir-v1.0.0-arguana.test.txt
+
+bin/trec_eval -c -m recall.1000 \
+  tools/topics-and-qrels/qrels.beir-v1.0.0-arguana.test.txt \
+  runs/run.beir-v1.0.0-arguana.flat.bm25.topics.beir-v1.0.0-arguana.test.txt
+```
+
+## Cross-Dataset Evaluation
+
+BEIR's primary purpose is **zero-shot cross-dataset evaluation**:
+
+<Steps>
+  <Step title="Train on one dataset">
+    Train your model on a source dataset (e.g., MS MARCO)
+  </Step>
+  
+  <Step title="Evaluate on BEIR">
+    Evaluate the same model on all 18 BEIR datasets without any additional training
+  </Step>
+  
+  <Step title="Report aggregate performance">
+    Report average performance across datasets as a measure of generalization
+  </Step>
+</Steps>
+
+This tests how well models generalize to new domains and tasks without fine-tuning.
+
+## Key Insights from BEIR
+
+- **BM25 is competitive**: BM25 remains a strong baseline across many BEIR datasets
+- **No single best model**: Different datasets favor different retrieval approaches
+- **Domain shift matters**: Models trained on MS MARCO may not generalize well to specialized domains
+- **Dense vs. sparse**: Dense models excel on semantic matching; sparse models on lexical matching
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Running Regressions" icon="play" href="/regressions/running-regressions">
+    Complete guide to running BEIR regressions
+  </Card>
+  <Card title="MS MARCO Regressions" icon="database" href="/regressions/ms-marco">
+    Learn about MS MARCO regressions
+  </Card>
+</CardGroup>

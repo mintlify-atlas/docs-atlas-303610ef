@@ -1,0 +1,345 @@
+---
+title: IndexCollection
+description: API reference for indexing document collections with Anserini
+---
+
+## Overview
+
+`IndexCollection` is the main class for building Lucene inverted indexes from document collections. It extends `AbstractIndexer` and provides comprehensive control over text analysis, storage options, and indexing behavior.
+
+**Package:** `io.anserini.index`
+
+## Constructor
+
+```java
+public IndexCollection(IndexCollection.Args args) throws Exception
+```
+
+Creates a new IndexCollection instance with the specified configuration.
+
+<ParamField path="args" type="IndexCollection.Args" required>
+  Configuration object containing all indexing parameters
+</ParamField>
+
+## Configuration (Args Class)
+
+The `IndexCollection.Args` class extends `AbstractIndexer.Args` and provides configuration for the indexing process.
+
+### Base Parameters (from AbstractIndexer.Args)
+
+<ParamField path="collectionClass" type="String" required>
+  Collection class name in package `io.anserini.collection` (e.g., "JsonCollection", "TrecCollection")
+</ParamField>
+
+<ParamField path="input" type="String" required>
+  Path to the input collection directory
+</ParamField>
+
+<ParamField path="index" type="String" required>
+  Path where the index will be created
+</ParamField>
+
+<ParamField path="threads" type="int" default="4">
+  Number of indexing threads to use
+</ParamField>
+
+<ParamField path="memoryBuffer" type="int" default="4096">
+  Memory buffer size in MB for IndexWriter
+</ParamField>
+
+<ParamField path="uniqueDocid" type="boolean" default="false">
+  Remove duplicate documents with the same docid during indexing
+</ParamField>
+
+<ParamField path="optimize" type="boolean" default="false">
+  Merge index into a single segment after indexing completes
+</ParamField>
+
+<ParamField path="verbose" type="boolean" default="false">
+  Enable verbose logging for each indexing thread
+</ParamField>
+
+<ParamField path="quiet" type="boolean" default="false">
+  Turn off all logging except errors
+</ParamField>
+
+### IndexCollection-Specific Parameters
+
+<ParamField path="generator" type="String" default="DefaultLuceneDocumentGenerator">
+  Document generator class name in package `io.anserini.index.generator`
+</ParamField>
+
+<ParamField path="fields" type="String[]" default="[]">
+  Additional fields to index beyond the default "contents" field
+</ParamField>
+
+<ParamField path="storePositions" type="boolean" default="false">
+  Store term positions (required for phrase queries)
+</ParamField>
+
+<ParamField path="storeDocvectors" type="boolean" default="false">
+  Store document vectors (required for relevance feedback)
+</ParamField>
+
+<ParamField path="storeContents" type="boolean" default="false">
+  Store the document contents field
+</ParamField>
+
+<ParamField path="storeRaw" type="boolean" default="false">
+  Store raw source documents
+</ParamField>
+
+<ParamField path="keepStopwords" type="boolean" default="false">
+  Keep stopwords during analysis
+</ParamField>
+
+<ParamField path="stopwords" type="String">
+  Path to custom stopwords file (cannot be used with keepStopwords)
+</ParamField>
+
+<ParamField path="stemmer" type="String" default="porter">
+  Stemming algorithm: "porter", "krovetz", or "none"
+</ParamField>
+
+<ParamField path="language" type="String" default="en">
+  Language analyzer to use (ISO 3166 two-letter code)
+</ParamField>
+
+<ParamField path="pretokenized" type="boolean" default="false">
+  Index pre-tokenized collections without additional processing
+</ParamField>
+
+<ParamField path="whitelist" type="String">
+  Path to file containing docids to index (one per line)
+</ParamField>
+
+<ParamField path="impact" type="boolean" default="false">
+  Store impact scores (no norms)
+</ParamField>
+
+<ParamField path="bm25Accurate" type="boolean" default="false">
+  Use AccurateBM25Similarity for exact document length computation
+</ParamField>
+
+<ParamField path="analyzeWithHuggingFaceTokenizer" type="String">
+  Use a pretrained HuggingFace tokenizer for analysis
+</ParamField>
+
+<ParamField path="useCompositeAnalyzer" type="boolean" default="false">
+  Use both a Lucene Analyzer and HuggingFace tokenizer
+</ParamField>
+
+<ParamField path="useAutoCompositeAnalyzer" type="boolean" default="false">
+  Use the AutoCompositeAnalyzer
+</ParamField>
+
+### Twitter-Specific Parameters
+
+<ParamField path="tweetKeepRetweets" type="boolean" default="false">
+  Include retweets in the index
+</ParamField>
+
+<ParamField path="tweetKeepUrls" type="boolean" default="false">
+  Keep URLs in tweets
+</ParamField>
+
+<ParamField path="tweetStemming" type="boolean" default="false">
+  Apply Porter stemming to tweets
+</ParamField>
+
+<ParamField path="tweetMaxId" type="long" default="Long.MAX_VALUE">
+  Maximum tweet ID to index (skip larger IDs)
+</ParamField>
+
+<ParamField path="tweetDeletedIdsFile" type="String">
+  File containing deleted tweet IDs to skip (one per line)
+</ParamField>
+
+## Methods
+
+### run
+
+```java
+public void run()
+```
+
+Executes the indexing process. This method is inherited from `AbstractIndexer` and orchestrates the entire indexing workflow.
+
+### getAnalyzer
+
+```java
+private Analyzer getAnalyzer()
+```
+
+Returns the configured analyzer based on the language, stemmer, and tokenizer settings.
+
+<ResponseField name="return" type="Analyzer">
+  The configured Lucene Analyzer instance
+</ResponseField>
+
+## Usage Examples
+
+### Basic Indexing
+
+```java
+import io.anserini.index.IndexCollection;
+
+public class BasicIndexing {
+    public static void main(String[] args) throws Exception {
+        IndexCollection.Args indexArgs = new IndexCollection.Args();
+        
+        // Required parameters
+        indexArgs.collectionClass = "JsonCollection";
+        indexArgs.input = "/path/to/documents";
+        indexArgs.index = "/path/to/index";
+        
+        // Optional: configure threads and memory
+        indexArgs.threads = 8;
+        indexArgs.memoryBuffer = 8192;
+        
+        // Create and run the indexer
+        IndexCollection indexer = new IndexCollection(indexArgs);
+        indexer.run();
+        
+        System.out.println("Indexing complete!");
+    }
+}
+```
+
+### Indexing with Custom Analysis
+
+```java
+import io.anserini.index.IndexCollection;
+
+public class CustomAnalysisIndexing {
+    public static void main(String[] args) throws Exception {
+        IndexCollection.Args indexArgs = new IndexCollection.Args();
+        
+        indexArgs.collectionClass = "TrecCollection";
+        indexArgs.input = "/path/to/trec/documents";
+        indexArgs.index = "/path/to/index";
+        
+        // Customize text analysis
+        indexArgs.stemmer = "krovetz";
+        indexArgs.keepStopwords = true;
+        indexArgs.language = "en";
+        
+        // Store additional information
+        indexArgs.storePositions = true;  // Enable phrase queries
+        indexArgs.storeDocvectors = true; // Enable relevance feedback
+        indexArgs.storeRaw = true;        // Store original documents
+        
+        IndexCollection indexer = new IndexCollection(indexArgs);
+        indexer.run();
+    }
+}
+```
+
+### Indexing with Custom Fields
+
+```java
+import io.anserini.index.IndexCollection;
+
+public class MultiFieldIndexing {
+    public static void main(String[] args) throws Exception {
+        IndexCollection.Args indexArgs = new IndexCollection.Args();
+        
+        indexArgs.collectionClass = "JsonCollection";
+        indexArgs.input = "/path/to/documents";
+        indexArgs.index = "/path/to/index";
+        
+        // Index additional fields
+        indexArgs.fields = new String[]{"title", "abstract", "keywords"};
+        
+        // Use custom document generator
+        indexArgs.generator = "CustomLuceneDocumentGenerator";
+        
+        IndexCollection indexer = new IndexCollection(indexArgs);
+        indexer.run();
+    }
+}
+```
+
+### Indexing for BM25 Retrieval
+
+```java
+import io.anserini.index.IndexCollection;
+
+public class BM25Indexing {
+    public static void main(String[] args) throws Exception {
+        IndexCollection.Args indexArgs = new IndexCollection.Args();
+        
+        indexArgs.collectionClass = "JsonCollection";
+        indexArgs.input = "/path/to/documents";
+        indexArgs.index = "/path/to/index";
+        
+        // Use accurate BM25 scoring
+        indexArgs.bm25Accurate = true;
+        
+        // Optimize for single-segment index (slower indexing, faster search)
+        indexArgs.optimize = true;
+        
+        // Remove duplicates if they exist
+        indexArgs.uniqueDocid = true;
+        
+        IndexCollection indexer = new IndexCollection(indexArgs);
+        indexer.run();
+    }
+}
+```
+
+### Indexing with Whitelist
+
+```java
+import io.anserini.index.IndexCollection;
+
+public class WhitelistIndexing {
+    public static void main(String[] args) throws Exception {
+        IndexCollection.Args indexArgs = new IndexCollection.Args();
+        
+        indexArgs.collectionClass = "TrecCollection";
+        indexArgs.input = "/path/to/documents";
+        indexArgs.index = "/path/to/index";
+        
+        // Only index documents in the whitelist
+        indexArgs.whitelist = "/path/to/whitelist.txt";
+        
+        IndexCollection indexer = new IndexCollection(indexArgs);
+        indexer.run();
+    }
+}
+```
+
+## Default Analyzer
+
+The default analyzer used by IndexCollection is:
+
+```java
+public static final Analyzer DEFAULT_ANALYZER = DefaultEnglishAnalyzer.newDefaultInstance();
+```
+
+This analyzer applies:
+- Lowercase conversion
+- Porter stemming
+- Stopword removal (standard English stopwords)
+
+## CLI Usage
+
+IndexCollection can also be invoked from the command line:
+
+```bash
+java -cp anserini-fatjar.jar io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input /path/to/documents \
+  -index /path/to/index \
+  -threads 8 \
+  -storePositions -storeDocvectors -storeRaw
+```
+
+## Notes
+
+- IndexCollection uses Lucene's `IndexWriter` with `BM25Similarity` by default
+- The indexer is thread-safe and can utilize multiple CPU cores
+- For large collections, increase `memoryBuffer` to improve indexing speed
+- Use `optimize` to create a single-segment index for faster search (at the cost of slower indexing)
+- The `uniqueDocid` option uses Lucene's `updateDocument` to handle duplicates

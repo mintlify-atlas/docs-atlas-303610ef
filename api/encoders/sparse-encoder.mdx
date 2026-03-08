@@ -1,0 +1,398 @@
+---
+title: SparseEncoder API
+description: Sparse vector encoders for learned sparse retrieval
+---
+
+## Overview
+
+The `SparseEncoder` abstract class provides an interface for encoding text into sparse vector representations using learned sparse models like SPLADE. Sparse encoders generate weighted term representations for efficient retrieval.
+
+## Class Hierarchy
+
+```
+OnnxEncoder<Map<String, Integer>>
+  └── SparseEncoder
+        ├── SpladeEncoder
+        │     ├── SpladePlusPlusSelfDistilEncoder
+        │     ├── SpladePlusPlusEnsembleDistilEncoder
+        │     └── SpladeV3Encoder
+        └── UniCoilEncoder
+```
+
+## SparseEncoder
+
+### Package
+
+`io.anserini.encoder.sparse.SparseEncoder`
+
+### Constructor
+
+```java
+public SparseEncoder(
+    int weightRange,
+    int quantRange,
+    String modelName,
+    String modelUrl,
+    String vocabName,
+    String vocabUrl,
+    String configUrl
+) throws IOException, OrtException, URISyntaxException
+```
+
+<ParamField path="weightRange" type="int" required>
+  Maximum weight value for scaling (typically 100)
+</ParamField>
+
+<ParamField path="quantRange" type="int" required>
+  Quantization range for integer weights (typically 256)
+</ParamField>
+
+<ParamField path="modelName" type="String" required>
+  Name of the ONNX model file to cache locally
+</ParamField>
+
+<ParamField path="modelUrl" type="String" required>
+  URL to download the ONNX model from
+</ParamField>
+
+<ParamField path="vocabName" type="String" required>
+  Name of the vocabulary file to cache locally
+</ParamField>
+
+<ParamField path="vocabUrl" type="String" required>
+  URL to download the vocabulary file from
+</ParamField>
+
+<ParamField path="configUrl" type="String" required>
+  URL to download the model configuration file from
+</ParamField>
+
+### Methods
+
+#### encode
+
+Encodes a text query into a sparse representation with integer weights.
+
+```java
+public Map<String, Integer> encode(String query) throws OrtException
+```
+
+<ParamField path="query" type="String" required>
+  The text to encode
+</ParamField>
+
+<ResponseField name="return" type="Map<String, Integer>">
+  Map of terms to their quantized integer weights
+</ResponseField>
+
+#### quantizeFloatWeights
+
+Converts floating-point weights to quantized integer weights.
+
+```java
+public Map<String, Integer> quantizeFloatWeights(
+    Map<String, Float> tokenFloatWeights
+)
+```
+
+<ParamField path="tokenFloatWeights" type="Map<String, Float>" required>
+  Map of tokens to their float weights
+</ParamField>
+
+<ResponseField name="return" type="Map<String, Integer>">
+  Map of tokens to quantized integer weights
+</ResponseField>
+
+#### flatten
+
+Flattens weighted terms into a space-separated string for indexing.
+
+```java
+public static String flatten(Map<String, Integer> intWeights)
+```
+
+<ParamField path="intWeights" type="Map<String, Integer>" required>
+  Map of terms to their integer weights
+</ParamField>
+
+<ResponseField name="return" type="String">
+  Space-separated string with terms repeated by their weights
+</ResponseField>
+
+#### tokenizeToIds
+
+Tokenizes a query into token IDs.
+
+```java
+public long[] tokenizeToIds(String query)
+```
+
+<ParamField path="query" type="String" required>
+  The text to tokenize
+</ParamField>
+
+<ResponseField name="return" type="long[]">
+  Array of token IDs including [CLS] and [SEP] tokens
+</ResponseField>
+
+## Available Implementations
+
+### SpladePlusPlusSelfDistilEncoder
+
+SPLADE++ self-distilled model for efficient learned sparse retrieval.
+
+```java
+import io.anserini.encoder.sparse.SpladePlusPlusSelfDistilEncoder;
+import ai.onnxruntime.OrtException;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.util.Map;
+
+public class SpladeExample {
+    public static void main(String[] args)
+            throws IOException, OrtException, URISyntaxException {
+        // Initialize encoder
+        SpladePlusPlusSelfDistilEncoder encoder = 
+            new SpladePlusPlusSelfDistilEncoder();
+        
+        // Encode a query
+        String query = "information retrieval systems";
+        Map<String, Integer> weights = encoder.encode(query);
+        
+        System.out.println("Weighted terms:");
+        weights.forEach((term, weight) -> {
+            System.out.println("  " + term + ": " + weight);
+        });
+        
+        // Flatten for indexing
+        String flattened = SpladePlusPlusSelfDistilEncoder.flatten(weights);
+        System.out.println("\nFlattened: " + flattened);
+        
+        // Clean up
+        encoder.close();
+    }
+}
+```
+
+**Example Output:**
+```
+Weighted terms:
+  information: 42
+  retrieval: 38
+  systems: 25
+  search: 15
+  document: 12
+  ...
+
+Flattened: information information ... retrieval retrieval ... systems systems ...
+```
+
+### SpladePlusPlusEnsembleDistilEncoder
+
+SPLADE++ ensemble distilled model for higher quality.
+
+```java
+import io.anserini.encoder.sparse.SpladePlusPlusEnsembleDistilEncoder;
+
+SpladePlusPlusEnsembleDistilEncoder encoder = 
+    new SpladePlusPlusEnsembleDistilEncoder();
+Map<String, Integer> weights = encoder.encode("neural ranking");
+```
+
+### SpladeV3Encoder
+
+SPLADE v3 model.
+
+```java
+import io.anserini.encoder.sparse.SpladeV3Encoder;
+
+SpladeV3Encoder encoder = new SpladeV3Encoder();
+Map<String, Integer> weights = encoder.encode("semantic search");
+```
+
+### UniCoilEncoder
+
+UniCOIL learned sparse encoder.
+
+```java
+import io.anserini.encoder.sparse.UniCoilEncoder;
+
+UniCoilEncoder encoder = new UniCoilEncoder();
+Map<String, Integer> weights = encoder.encode("passage ranking");
+```
+
+## Usage Patterns
+
+### Basic Encoding
+
+```java
+import io.anserini.encoder.sparse.SpladePlusPlusSelfDistilEncoder;
+import java.util.Map;
+
+try (SpladePlusPlusSelfDistilEncoder encoder = 
+        new SpladePlusPlusSelfDistilEncoder()) {
+    
+    String query = "What is machine learning?";
+    Map<String, Integer> weights = encoder.encode(query);
+    
+    // Print top terms by weight
+    weights.entrySet().stream()
+        .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+        .limit(10)
+        .forEach(entry -> 
+            System.out.println(entry.getKey() + ": " + entry.getValue()));
+            
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+### Indexing with Flattened Representation
+
+```java
+import io.anserini.encoder.sparse.SpladePlusPlusSelfDistilEncoder;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.TextField;
+import java.util.Map;
+
+try (SpladePlusPlusSelfDistilEncoder encoder = 
+        new SpladePlusPlusSelfDistilEncoder()) {
+    
+    String text = "Neural information retrieval";
+    Map<String, Integer> weights = encoder.encode(text);
+    
+    // Create Lucene document with flattened representation
+    Document doc = new Document();
+    String flattened = SpladePlusPlusSelfDistilEncoder.flatten(weights);
+    doc.add(new TextField("contents", flattened, Field.Store.YES));
+    
+    System.out.println("Flattened for indexing: " + flattened);
+    
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+### Filtering Low-Weight Terms
+
+```java
+import io.anserini.encoder.sparse.SpladePlusPlusSelfDistilEncoder;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+try (SpladePlusPlusSelfDistilEncoder encoder = 
+        new SpladePlusPlusSelfDistilEncoder()) {
+    
+    Map<String, Integer> weights = encoder.encode("information retrieval");
+    
+    // Filter terms with weight < 10
+    Map<String, Integer> filtered = weights.entrySet().stream()
+        .filter(e -> e.getValue() >= 10)
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    
+    System.out.println("Original terms: " + weights.size());
+    System.out.println("Filtered terms: " + filtered.size());
+    
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+### Computing Overlap Similarity
+
+```java
+import io.anserini.encoder.sparse.SpladePlusPlusSelfDistilEncoder;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+
+try (SpladePlusPlusSelfDistilEncoder encoder = 
+        new SpladePlusPlusSelfDistilEncoder()) {
+    
+    Map<String, Integer> query = encoder.encode("machine learning");
+    Map<String, Integer> doc = encoder.encode("deep learning algorithms");
+    
+    // Compute term overlap
+    Set<String> overlap = new HashSet<>(query.keySet());
+    overlap.retainAll(doc.keySet());
+    
+    System.out.println("Query terms: " + query.size());
+    System.out.println("Doc terms: " + doc.size());
+    System.out.println("Overlapping terms: " + overlap.size());
+    
+    // Compute weighted similarity
+    float similarity = 0.0f;
+    for (String term : overlap) {
+        similarity += query.get(term) * doc.get(term);
+    }
+    System.out.println("Weighted similarity: " + similarity);
+    
+} catch (Exception e) {
+    e.printStackTrace();
+}
+```
+
+## Weight Quantization
+
+The encoder quantizes floating-point weights to integers:
+
+```java
+// Internal quantization formula
+int quantized = Math.round(floatWeight / weightRange * quantRange);
+
+// Example: weightRange=100, quantRange=256
+// floatWeight=0.5 → quantized=128
+// floatWeight=0.25 → quantized=64
+```
+
+## Model Caching
+
+All sparse encoders cache models and vocabularies in:
+
+```
+~/.cache/pyserini/encoders/
+```
+
+Models are downloaded once on first use.
+
+## Resource Management
+
+Sparse encoders implement `AutoCloseable`:
+
+```java
+// Using try-with-resources (recommended)
+try (SpladePlusPlusSelfDistilEncoder encoder = 
+        new SpladePlusPlusSelfDistilEncoder()) {
+    Map<String, Integer> weights = encoder.encode("query");
+    // encoder.close() called automatically
+}
+
+// Manual cleanup
+SpladePlusPlusSelfDistilEncoder encoder = 
+    new SpladePlusPlusSelfDistilEncoder();
+try {
+    Map<String, Integer> weights = encoder.encode("query");
+} finally {
+    encoder.close();
+}
+```
+
+## Exceptions
+
+<ResponseField name="IOException" type="Exception">
+  Thrown when model or vocabulary files cannot be downloaded or read
+</ResponseField>
+
+<ResponseField name="OrtException" type="Exception">
+  Thrown when ONNX runtime encounters errors during inference
+</ResponseField>
+
+<ResponseField name="URISyntaxException" type="Exception">
+  Thrown when model URLs are malformed
+</ResponseField>
+
+## See Also
+
+- [DenseEncoder API](/api/encoders/dense-encoder) - Dense vector encoders
+- [Indexing API](/api/indexing) - Building sparse indexes

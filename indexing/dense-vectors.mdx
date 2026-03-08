@@ -1,0 +1,385 @@
+---
+title: Dense Vector Indexing
+description: Index dense vector embeddings with HNSW and flat vector indexes in Anserini
+---
+
+Anserini supports indexing dense vector embeddings for neural retrieval using both HNSW (Hierarchical Navigable Small World) graphs and flat (brute-force) vector indexes.
+
+## Overview
+
+Anserini provides two indexers for dense vectors:
+
+- **IndexHnswDenseVectors** - HNSW graph index for fast approximate nearest neighbor search
+- **IndexFlatDenseVectors** - Flat index for exact brute-force search
+
+Both indexers use Lucene's vector search capabilities and support int8 quantization for reduced memory usage.
+
+## HNSW Vector Indexing
+
+HNSW (Hierarchical Navigable Small World) provides fast approximate k-NN search using a multi-layer graph structure.
+
+### Basic Usage
+
+```bash
+bin/run.sh io.anserini.index.IndexHnswDenseVectors \
+  -collection JsonDenseVectorCollection \
+  -input collections/msmarco-passage-bge-base-en-v1.5 \
+  -index indexes/msmarco-passage-bge-base-en-v1.5-hnsw \
+  -generator DenseVectorDocumentGenerator \
+  -threads 16
+```
+
+### HNSW Parameters
+
+<ParamField path="collection" type="string" required>
+  Collection class (typically `JsonDenseVectorCollection` or `ParquetDenseVectorCollection`)
+</ParamField>
+
+<ParamField path="input" type="string" required>
+  Path to dense vector collection
+</ParamField>
+
+<ParamField path="index" type="string" required>
+  Output path for HNSW index
+</ParamField>
+
+<ParamField path="generator" type="string" default="DenseVectorDocumentGenerator">
+  Document generator class (use `DenseVectorDocumentGenerator` for vectors)
+</ParamField>
+
+<ParamField path="M" type="int" default="16">
+  HNSW parameter M - number of bi-directional links per node. Higher values improve recall but increase memory usage.
+  
+  Typical values:
+  - `16` - Good balance (default)
+  - `32` - Higher recall, more memory
+  - `8` - Lower memory, reduced recall
+</ParamField>
+
+<ParamField path="efC" type="int" default="100">
+  HNSW parameter efConstruction - size of dynamic candidate list during index construction. Higher values improve index quality but slow indexing.
+  
+  Typical values:
+  - `100` - Default
+  - `200` - Better quality
+  - `400-800` - High-quality production indexes
+</ParamField>
+
+### Storage and Quantization
+
+<ParamField path="storeVectors" type="boolean" default="false">
+  Store raw vectors in the index (required for some reranking scenarios)
+</ParamField>
+
+<ParamField path="quantize.int8" type="boolean" default="false">
+  Apply int8 scalar quantization to vectors. Reduces memory by ~4x with minimal accuracy loss.
+</ParamField>
+
+### Merge Policy
+
+<ParamField path="noMerge" type="boolean" default="false">
+  Disable segment merging for faster indexing but slower retrieval
+</ParamField>
+
+<ParamField path="maxMergedSegmentSize" type="int" default="16384">
+  Maximum segment size in MB during normal merging
+</ParamField>
+
+<ParamField path="segmentsPerTier" type="int" default="10">
+  Number of segments allowed per tier in TieredMergePolicy
+</ParamField>
+
+<ParamField path="maxMergeAtOnce" type="int" default="10">
+  Maximum number of segments merged at once during normal merging
+</ParamField>
+
+### Memory Tuning
+
+<ParamField path="memoryBuffer" type="int" default="4096">
+  RAM buffer size in MB for the IndexWriter
+</ParamField>
+
+<ParamField path="maxThreadMemoryBeforeFlush" type="int" default="2047">
+  Maximum memory per thread (in MB) before forced flush. Must be less than 2048.
+  
+  Default `2047` is the most aggressive setting - be careful of GCLocker issues.
+</ParamField>
+
+## HNSW Examples
+
+<CodeGroup>
+
+```bash Standard HNSW Index
+# Default HNSW parameters
+bin/run.sh io.anserini.index.IndexHnswDenseVectors \
+  -collection JsonDenseVectorCollection \
+  -input collections/msmarco-passage-bge-base \
+  -index indexes/msmarco-passage-hnsw \
+  -generator DenseVectorDocumentGenerator \
+  -threads 16 \
+  -M 16 \
+  -efC 100
+```
+
+```bash High-Quality HNSW
+# Better recall with larger M and efC
+bin/run.sh io.anserini.index.IndexHnswDenseVectors \
+  -collection JsonDenseVectorCollection \
+  -input collections/msmarco-passage-bge-base \
+  -index indexes/msmarco-passage-hnsw-hq \
+  -generator DenseVectorDocumentGenerator \
+  -threads 16 \
+  -M 32 \
+  -efC 400 \
+  -storeVectors
+```
+
+```bash Quantized HNSW
+# Int8 quantization for reduced memory
+bin/run.sh io.anserini.index.IndexHnswDenseVectors \
+  -collection JsonDenseVectorCollection \
+  -input collections/msmarco-passage-bge-base \
+  -index indexes/msmarco-passage-hnsw-int8 \
+  -generator DenseVectorDocumentGenerator \
+  -threads 16 \
+  -M 16 \
+  -efC 100 \
+  -quantize.int8
+```
+
+```bash Fast Indexing (No Merge)
+# Skip merging for faster indexing
+bin/run.sh io.anserini.index.IndexHnswDenseVectors \
+  -collection JsonDenseVectorCollection \
+  -input collections/large-corpus-vectors \
+  -index indexes/large-corpus-hnsw \
+  -generator DenseVectorDocumentGenerator \
+  -threads 32 \
+  -M 16 \
+  -efC 100 \
+  -noMerge
+```
+
+```bash Optimized Single Segment
+# Force merge to single segment
+bin/run.sh io.anserini.index.IndexHnswDenseVectors \
+  -collection JsonDenseVectorCollection \
+  -input collections/msmarco-passage-bge-base \
+  -index indexes/msmarco-passage-hnsw-optimized \
+  -generator DenseVectorDocumentGenerator \
+  -threads 16 \
+  -M 16 \
+  -efC 100 \
+  -optimize
+```
+
+</CodeGroup>
+
+## Flat Vector Indexing
+
+Flat indexes perform exact brute-force k-NN search by computing distances to all vectors. This guarantees perfect recall but is slower for large collections.
+
+### Basic Usage
+
+```bash
+bin/run.sh io.anserini.index.IndexFlatDenseVectors \
+  -collection ParquetDenseVectorCollection \
+  -input collections/vectors.parquet \
+  -index indexes/vectors-flat \
+  -generator DenseVectorDocumentGenerator \
+  -threads 8
+```
+
+### Flat Index Parameters
+
+<ParamField path="collection" type="string" required>
+  Collection class for dense vectors
+</ParamField>
+
+<ParamField path="input" type="string" required>
+  Path to dense vector collection
+</ParamField>
+
+<ParamField path="index" type="string" required>
+  Output path for flat index
+</ParamField>
+
+<ParamField path="generator" type="string" default="DenseVectorDocumentGenerator">
+  Document generator class
+</ParamField>
+
+<ParamField path="storeVectors" type="boolean" default="false">
+  Store raw vectors in index
+</ParamField>
+
+<ParamField path="quantize.int8" type="boolean" default="false">
+  Apply int8 quantization to vectors
+</ParamField>
+
+### Parquet-Specific Options
+
+When using `ParquetDenseVectorCollection`:
+
+<ParamField path="docidField" type="string" default="docid">
+  Name of the document ID field in Parquet files
+</ParamField>
+
+<ParamField path="vectorField" type="string" default="vector">
+  Name of the vector field in Parquet files
+</ParamField>
+
+<ParamField path="normalizeVectors" type="boolean" default="false">
+  Normalize vectors to unit length during indexing
+</ParamField>
+
+## Flat Index Examples
+
+<CodeGroup>
+
+```bash Basic Flat Index
+# Standard flat index for exact search
+bin/run.sh io.anserini.index.IndexFlatDenseVectors \
+  -collection JsonDenseVectorCollection \
+  -input collections/vectors-json \
+  -index indexes/vectors-flat \
+  -generator DenseVectorDocumentGenerator \
+  -threads 8
+```
+
+```bash Parquet Input
+# Index from Parquet files with custom fields
+bin/run.sh io.anserini.index.IndexFlatDenseVectors \
+  -collection ParquetDenseVectorCollection \
+  -input collections/embeddings.parquet \
+  -index indexes/embeddings-flat \
+  -generator DenseVectorDocumentGenerator \
+  -threads 8 \
+  -docidField id \
+  -vectorField embedding \
+  -normalizeVectors
+```
+
+```bash Quantized Flat Index
+# Int8 quantization for memory efficiency
+bin/run.sh io.anserini.index.IndexFlatDenseVectors \
+  -collection JsonDenseVectorCollection \
+  -input collections/vectors-json \
+  -index indexes/vectors-flat-int8 \
+  -generator DenseVectorDocumentGenerator \
+  -threads 8 \
+  -quantize.int8 \
+  -storeVectors
+```
+
+</CodeGroup>
+
+## HNSW vs Flat: When to Use Each
+
+### Use HNSW When:
+- Collection has > 100K vectors
+- Fast retrieval is critical
+- Approximate search is acceptable (typically > 95% recall@100)
+- Memory/disk space is available for graph structure
+
+### Use Flat When:
+- Collection is small (< 100K vectors)
+- Perfect recall is required
+- Evaluating HNSW accuracy (flat as ground truth)
+- Simplicity is preferred over speed
+
+## Vector Dimensions
+
+By default, Lucene limits vector dimensions. Anserini increases this limit to **4096 dimensions** using a custom `DelegatingKnnVectorsFormat`.
+
+Common embedding dimensions:
+- `384` - MiniLM, BGE-small
+- `768` - BERT, BGE-base
+- `1024` - BGE-large
+- `1536` - OpenAI text-embedding-ada-002
+- `3072` - OpenAI text-embedding-3-large
+
+## Int8 Quantization
+
+Int8 scalar quantization reduces memory by ~4x:
+- Float32: 4 bytes per dimension
+- Int8: 1 byte per dimension
+
+**Trade-offs**:
+- Memory: 75% reduction
+- Accuracy: ~1-2% recall loss (typical)
+- Speed: Slightly faster due to cache efficiency
+
+Example for 768-dimensional vectors:
+- Unquantized: 3 KB per vector
+- Quantized: 768 bytes per vector
+
+For 1M vectors:
+- Unquantized: ~3 GB
+- Quantized: ~768 MB
+
+## Collection Formats
+
+### JsonDenseVectorCollection
+
+JSON Lines format with vectors:
+```json
+{"id": "doc1", "vector": [0.1, 0.2, ..., 0.768]}
+{"id": "doc2", "vector": [0.3, 0.4, ..., 0.768]}
+```
+
+### ParquetDenseVectorCollection
+
+Parquet files with configurable field names:
+- Document ID column (default: `docid`)
+- Vector column (default: `vector`)
+
+## Performance Tuning
+
+### Indexing Speed
+
+**Faster Indexing**:
+- Increase `-threads` (up to physical cores)
+- Increase `-memoryBuffer` (e.g., 8192, 16384)
+- Use `-noMerge` for HNSW
+- Lower `-efC` values (e.g., 100 vs 400)
+
+**Better Index Quality**:
+- Higher `-efC` (200-800)
+- Larger `-M` (32-64)
+- Use `-optimize` for final merge
+
+### Search Speed
+
+**HNSW Search**:
+- Larger `-M` improves recall and speed
+- Use `-optimize` for single segment
+- Consider `-quantize.int8` for memory-bound systems
+
+## Common Issues
+
+### GCLocker with maxThreadMemoryBeforeFlush
+
+If you see GCLocker errors:
+```bash
+# Reduce from 2047 to a more conservative value
+-maxThreadMemoryBeforeFlush 1945
+```
+
+### Out of Memory During Indexing
+
+- Reduce `-threads`
+- Reduce `-memoryBuffer`
+- Reduce `-maxThreadMemoryBeforeFlush`
+- Increase JVM heap: `export JAVA_OPTS="-Xmx32g"`
+
+### Dimension Limit Exceeded
+
+If vectors have > 4096 dimensions, you'll need to:
+- Reduce dimension via PCA/dimensionality reduction
+- Or modify the `maxDimensions` parameter in the indexer source code
+
+## See Also
+
+- [IndexCollection Command](/indexing/index-collection) - Sparse text indexing
+- [Index Options](/indexing/index-options) - General indexing configuration
+- [Prebuilt Indexes](/indexing/prebuilt-indexes) - Download prebuilt dense indexes

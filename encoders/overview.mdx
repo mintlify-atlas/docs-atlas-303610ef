@@ -1,0 +1,121 @@
+---
+title: Encoder Overview
+description: Understanding dense and sparse encoders in Anserini
+---
+
+# Encoder Overview
+
+Encoders in Anserini transform text queries and documents into numerical representations that can be used for semantic search and retrieval. Anserini provides two main types of encoders, each optimized for different retrieval scenarios.
+
+## What Are Encoders?
+
+Encoders are neural models that convert text into vector representations. These representations capture semantic meaning and enable similarity-based retrieval beyond traditional keyword matching. All encoders in Anserini are implemented using [ONNX Runtime](/encoders/onnx) for fast, portable inference.
+
+## Dense vs Sparse Encoders
+
+### Dense Encoders
+
+[Dense encoders](/encoders/dense-encoders) produce fixed-length, continuous vector representations (embeddings) where every dimension typically has a non-zero value.
+
+<CardGroup cols={2}>
+  <Card title="Characteristics" icon="circle-dot">
+    - Fixed-length vectors (e.g., 768, 1024 dimensions)
+    - All dimensions are active (non-zero)
+    - Capture semantic similarity through dense representations
+    - Require vector similarity search (e.g., cosine similarity)
+  </Card>
+  <Card title="Use Cases" icon="bullseye">
+    - Semantic search across domains
+    - Cross-lingual retrieval
+    - Finding conceptually similar documents
+    - When query and document vocabularies differ
+  </Card>
+</CardGroup>
+
+**Examples**: BGE (BAAI General Embedding), CosDPR, Arctic Embed
+
+### Sparse Encoders
+
+[Sparse encoders](/encoders/sparse-encoders) generate high-dimensional vectors with mostly zero values, representing learned term importance weights.
+
+<CardGroup cols={2}>
+  <Card title="Characteristics" icon="grip">
+    - High-dimensional vectors (vocabulary-sized)
+    - Most dimensions are zero (sparse)
+    - Learned expansion of query/document terms
+    - Compatible with inverted index structures
+  </Card>
+  <Card title="Use Cases" icon="target">
+    - Lexical-semantic hybrid retrieval
+    - Efficient first-stage retrieval
+    - Query expansion through learned weights
+    - When interpretability is important
+  </Card>
+</CardGroup>
+
+**Examples**: SPLADE, UniCoil, SPLADE++
+
+## Comparison
+
+<Accordion title="Dense vs Sparse Trade-offs">
+  | Aspect | Dense Encoders | Sparse Encoders |
+  |--------|----------------|------------------|
+  | **Vector Size** | Fixed (768-1024) | Variable (vocab-sized) |
+  | **Sparsity** | None (all dimensions active) | High (90%+ zeros) |
+  | **Indexing** | Requires vector index (HNSW, IVF) | Uses inverted index |
+  | **Interpretability** | Low (black-box embeddings) | High (term weights visible) |
+  | **Retrieval Speed** | Depends on index type | Fast with inverted index |
+  | **Memory** | Moderate | Can be large |
+  | **Semantic Capture** | Strong semantic matching | Lexical-semantic hybrid |
+</Accordion>
+
+## ONNX Integration
+
+All Anserini encoders leverage [ONNX Runtime](/encoders/onnx) for inference, providing several benefits:
+
+<CardGroup cols={3}>
+  <Card title="Performance" icon="gauge-high">
+    Optimized compute graphs reduce inference time significantly
+  </Card>
+  <Card title="Portability" icon="laptop-mobile">
+    Run the same model across different platforms and hardware
+  </Card>
+  <Card title="Compatibility" icon="puzzle-piece">
+    Seamless integration with Java via ONNX Runtime API
+  </Card>
+</CardGroup>
+
+Models are automatically downloaded and cached in `~/.cache/pyserini/encoders/` on first use.
+
+## Choosing an Encoder
+
+<AccordionGroup>
+  <Accordion title="Use Dense Encoders When...">
+    - You need strong semantic understanding across different vocabularies
+    - Queries and documents use different terminology for the same concepts
+    - Cross-lingual or domain-transfer retrieval is required
+    - You have infrastructure for vector similarity search
+  </Accordion>
+  
+  <Accordion title="Use Sparse Encoders When...">
+    - You want to leverage existing inverted index infrastructure
+    - Interpretability of retrieval decisions is important
+    - You need query expansion with learned term weights
+    - Fast first-stage retrieval is a priority
+    - You want a hybrid approach between lexical and semantic matching
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Dense Encoders" icon="circle-dot" href="/encoders/dense-encoders">
+    Explore BGE, CosDPR, and Arctic Embed implementations
+  </Card>
+  <Card title="Sparse Encoders" icon="grip" href="/encoders/sparse-encoders">
+    Learn about SPLADE, UniCoil, and SPLADE++ variants
+  </Card>
+  <Card title="ONNX Integration" icon="gear" href="/encoders/onnx">
+    Understand ONNX conversion and optimization
+  </Card>
+</CardGroup>

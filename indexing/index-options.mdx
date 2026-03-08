@@ -1,0 +1,405 @@
+---
+title: Indexing Configuration Options
+description: Detailed guide to Anserini indexing configurations, generators, analyzers, and index settings
+---
+
+This page provides detailed information about indexing configuration options in Anserini, including document generators, text analyzers, index storage settings, and similarity functions.
+
+## Document Generators
+
+Document generators control how source documents are converted into Lucene documents. They are located in the `io.anserini.index.generator` package.
+
+### Default Generator
+
+**DefaultLuceneDocumentGenerator** - The standard generator for most collections:
+- Extracts document ID and contents
+- Applies configured text analysis
+- Handles additional fields if specified
+- Supports both plain text and structured formats
+
+Usage:
+```bash
+-generator DefaultLuceneDocumentGenerator
+```
+
+### Specialized Generators
+
+**TweetGenerator** - For Twitter collections:
+- Handles tweet-specific fields (screen name, date, etc.)
+- Optional retweet filtering
+- URL and hashtag processing
+- Configured via `tweet.*` parameters
+
+**DenseVectorDocumentGenerator** - For dense vector collections:
+- Handles vector embeddings
+- Supports multiple vector formats
+- Used with HNSW and flat vector indexes
+
+### Custom Generators
+
+You can specify any generator class from `io.anserini.index.generator`:
+
+```bash
+-generator [ClassName]
+```
+
+The generator must:
+- Extend `LuceneDocumentGenerator`
+- Be located in the `io.anserini.index.generator` package
+- Have a constructor accepting `IndexCollection.Args`
+
+## Text Analysis
+
+Anserini provides multiple text analysis options for different languages and use cases.
+
+### Default English Analysis
+
+The default analyzer (`DefaultEnglishAnalyzer`) includes:
+- Lowercasing
+- Porter stemming
+- Stopword removal (standard English stopwords)
+- Punctuation handling
+
+### Language-Specific Analyzers
+
+Set the language using ISO 3166 two-letter codes:
+
+<Steps>
+  <Step title="Specify Language">
+    ```bash
+    -language [code]
+    ```
+    Supported codes include: `en`, `ar`, `bn`, `de`, `es`, `fa`, `fi`, `fr`, `hi`, `hu`, `id`, `it`, `ja`, `ko`, `nl`, `no`, `pt`, `ru`, `sv`, `te`, `th`, `tr`, `zh`
+  </Step>
+
+  <Step title="Language-Specific Processing">
+    Anserini automatically selects appropriate:
+    - Character normalization
+    - Stopword lists
+    - Stemming algorithms (where available)
+    - Tokenization rules
+  </Step>
+</Steps>
+
+Example for Arabic:
+```bash
+-language ar
+```
+
+### Stemming Options
+
+Control stemming algorithm with the `-stemmer` parameter:
+
+**Porter Stemmer** (default for English):
+```bash
+-stemmer porter
+```
+- Most aggressive stemming
+- Best for recall-oriented tasks
+- Standard in IR research
+
+**Krovetz Stemmer**:
+```bash
+-stemmer krovetz
+```
+- More conservative than Porter
+- Better precision in some scenarios
+- Linguistically motivated
+
+**No Stemming**:
+```bash
+-stemmer none
+```
+- Exact word matching only
+- Useful for precise queries or proper nouns
+
+### Stopword Handling
+
+**Default Behavior**: Stopwords are removed
+
+**Keep Stopwords**:
+```bash
+-keepStopwords
+```
+
+**Custom Stopword List**:
+```bash
+-stopwords /path/to/stopwords.txt
+```
+
+Stopwords file format (one word per line):
+```text
+the
+a
+an
+and
+or
+...
+```
+
+### Pre-tokenized Collections
+
+For collections that are already tokenized:
+
+```bash
+-pretokenized
+```
+
+This:
+- Uses `WhitespaceAnalyzer`
+- Skips stemming and stopword removal
+- Treats whitespace as token boundaries
+- Ideal for pre-processed text or impact-scored collections
+
+### HuggingFace Tokenizers
+
+**Basic HuggingFace Tokenizer**:
+```bash
+-analyzeWithHuggingFaceTokenizer bert-base-uncased
+```
+
+**Composite Analyzer** (Lucene + HuggingFace):
+```bash
+-analyzeWithHuggingFaceTokenizer bert-base-uncased \
+-useCompositeAnalyzer
+```
+
+**Auto Composite Analyzer**:
+```bash
+-analyzeWithHuggingFaceTokenizer bert-base-uncased \
+-useAutoCompositeAnalyzer
+```
+
+## Index Storage Settings
+
+Control what information is stored in the index and how much space it uses.
+
+### Term Positions
+
+```bash
+-storePositions
+```
+
+**When to enable**:
+- Phrase queries (e.g., "information retrieval")
+- Proximity queries
+- Passage retrieval
+
+**Trade-offs**:
+- Increases index size significantly (2-3x)
+- Required for phrase search
+- No impact on bag-of-words search
+
+### Document Vectors
+
+```bash
+-storeDocvectors
+```
+
+**When to enable**:
+- Pseudo-relevance feedback (PRF)
+- Query expansion (RM3, Rocchio)
+- Extractive summarization
+- Document similarity computation
+
+**Trade-offs**:
+- Increases index size moderately
+- Required for relevance feedback
+- Stores term frequencies per document
+
+### Document Contents
+
+```bash
+-storeContents
+```
+
+Stores the processed (analyzed) document contents field.
+
+**Use cases**:
+- Retrieving processed text
+- Debugging analysis pipeline
+
+### Raw Documents
+
+```bash
+-storeRaw
+```
+
+Stores the original, unprocessed source document.
+
+**Use cases**:
+- Displaying original documents in search results
+- Re-processing or re-ranking
+- Document export
+- Snippet generation
+
+**Trade-offs**:
+- Largest storage overhead
+- Duplicates original collection data
+- Enables self-contained indexes
+
+### Index Size Comparison
+
+Typical index sizes for MS MARCO Passage (8.8M documents):
+
+| Configuration | Size | Use Case |
+|--------------|------|----------|
+| Minimal (no flags) | ~0.5 GB | Basic search only |
+| + storePositions | ~2.1 GB | Phrase queries |
+| + storeDocvectors | ~1.2 GB | Relevance feedback |
+| + storeRaw | ~3.6 GB | Full document retrieval |
+| All flags | ~5.8 GB | Complete functionality |
+
+## Similarity Functions
+
+Similarity functions must be set at **index time** and cannot be changed later.
+
+### BM25 (Default)
+
+```bash
+# No flag needed - BM25 is default
+```
+
+**Lucene's BM25Similarity**:
+- Fast approximate document length
+- Standard for most use cases
+- Compatible with all Lucene versions
+
+### Accurate BM25
+
+```bash
+-bm25.accurate
+```
+
+**AccurateBM25Similarity**:
+- Computes exact document lengths
+- More accurate scoring
+- Slightly slower indexing and retrieval
+- Required for some research experiments
+
+**Important**: This setting affects the index format and cannot be changed after indexing.
+
+### Impact Similarity
+
+```bash
+-impact
+```
+
+**ImpactSimilarity**:
+- For learned sparse retrieval models (DeepImpact, SPLADE, uniCOIL)
+- Stores pre-computed impact scores
+- No document length normalization
+- Used with pre-tokenized impact-scored collections
+
+**Usage pattern**:
+```bash
+-impact -pretokenized
+```
+
+## Common Configuration Patterns
+
+<CodeGroup>
+
+```bash Standard Search Index
+# Good balance of features and size
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input collections/mydata \
+  -index indexes/mydata \
+  -threads 8 \
+  -storePositions \
+  -storeDocvectors \
+  -storeRaw
+```
+
+```bash Minimal Index
+# Smallest size, basic search only
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input collections/mydata \
+  -index indexes/mydata-minimal \
+  -threads 8
+```
+
+```bash Research Index
+# All features for experiments
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -input collections/mydata \
+  -index indexes/mydata-full \
+  -threads 16 \
+  -storePositions \
+  -storeDocvectors \
+  -storeContents \
+  -storeRaw \
+  -bm25.accurate
+```
+
+```bash Learned Sparse Index
+# For DeepImpact, SPLADE, etc.
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonVectorCollection \
+  -input collections/msmarco-passage-deepimpact \
+  -index indexes/msmarco-passage-deepimpact \
+  -generator DefaultLuceneDocumentGenerator \
+  -threads 16 \
+  -impact \
+  -pretokenized
+```
+
+</CodeGroup>
+
+## Performance Tuning
+
+### Thread Count
+
+```bash
+-threads [n]
+```
+
+Recommendations:
+- Start with number of physical cores
+- IO-bound: can use 1.5-2x physical cores
+- CPU-bound: stick to physical cores
+- Monitor CPU and disk utilization
+
+### Memory Buffer
+
+```bash
+-memoryBuffer [mb]
+```
+
+Default: 4096 MB (4 GB)
+
+Recommendations:
+- Larger buffer = faster indexing, fewer merges
+- Set to ~25% of available RAM
+- For large collections: 8192-16384 MB
+- Monitor JVM heap usage
+
+### Optimization
+
+```bash
+-optimize
+```
+
+**Effect**:
+- Merges all segments into one
+- Slower indexing (extra merge time)
+- Faster retrieval
+- Smaller final index size
+
+**When to use**:
+- Production indexes (not frequently updated)
+- Maximum query performance needed
+- Disk space is a concern
+
+**When to avoid**:
+- Frequently updated indexes
+- Indexing time is critical
+
+## See Also
+
+- [IndexCollection Command](/indexing/index-collection) - Command-line reference
+- [Prebuilt Indexes](/indexing/prebuilt-indexes) - Using pre-built indexes
+- [Dense Vectors](/indexing/dense-vectors) - Vector indexing options

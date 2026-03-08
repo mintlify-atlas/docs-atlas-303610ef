@@ -1,0 +1,493 @@
+---
+title: Qrels API
+description: Relevance judgments management for evaluation
+---
+
+## Overview
+
+Anserini provides APIs for managing relevance judgments (qrels) used in IR evaluation. The `Qrels` enum provides predefined qrels for standard test collections, while `RelevanceJudgments` loads and queries qrels data.
+
+## Qrels Enum
+
+Predefined qrels for standard IR test collections.
+
+### Package
+
+`io.anserini.eval.Qrels`
+
+### Available Collections
+
+The `Qrels` enum includes relevance judgments for numerous test collections:
+
+#### Classic TREC Collections
+
+- `CACM` - CACM collection
+- `TREC1_ADHOC` through `TREC3_ADHOC` - Ad-hoc tracks
+- `ROBUST04`, `ROBUST05` - Robust tracks
+- `CORE17`, `CORE18` - Common Core tracks
+
+#### Web Collections
+
+- `WT10G` - WT10g collection
+- `TREC2004_TERABYTE` through `TREC2006_TERABYTE` - Terabyte tracks
+- `TREC2011_WEB` through `TREC2014_WEB` - Web tracks
+
+#### Deep Learning Tracks
+
+- `TREC2019_DL_DOC`, `TREC2019_DL_PASSAGE` - TREC DL 2019
+- `TREC2020_DL_DOC`, `TREC2020_DL_PASSAGE` - TREC DL 2020
+- `TREC2021_DL_DOC`, `TREC2021_DL_PASSAGE` - TREC DL 2021
+- `TREC2022_DL_DOC`, `TREC2022_DL_PASSAGE` - TREC DL 2022
+- `TREC2023_DL_DOC`, `TREC2023_DL_PASSAGE` - TREC DL 2023
+
+#### MS MARCO
+
+- `MSMARCO_DOC_DEV` - MS MARCO document dev
+- `MSMARCO_PASSAGE_DEV_SUBSET` - MS MARCO passage dev
+- `MSMARCO_V2_DOC_DEV`, `MSMARCO_V2_DOC_DEV2` - MS MARCO v2 doc
+- `MSMARCO_V2_PASSAGE_DEV`, `MSMARCO_V2_PASSAGE_DEV2` - MS MARCO v2 passage
+- `MSMARCO_V21_DOC_DEV`, `MSMARCO_V21_DOC_DEV2` - MS MARCO v2.1 doc
+
+#### BEIR Collections
+
+- `BEIR_V1_0_0_TREC_COVID_TEST` - BEIR TREC-COVID
+- `BEIR_V1_0_0_NFCORPUS_TEST` - BEIR NFCorpus
+- `BEIR_V1_0_0_NQ_TEST` - BEIR Natural Questions
+- `BEIR_V1_0_0_HOTPOTQA_TEST` - BEIR HotpotQA
+- And many more BEIR datasets...
+
+#### Multilingual Collections
+
+- `MRTYDI_V11_*` - Mr. TyDi collections (Arabic, Bengali, English, etc.)
+- `MIRACL_V10_*` - MIRACL collections (18 languages)
+- `HC4_V1_0_*` - HC4 collections (Farsi, Russian, Chinese)
+- `CIRAL_V10_*` - CIRAL African language collections
+
+#### Multimodal Collections
+
+- `M_BEIR_*` - M-BEIR multimodal collections
+- `MMEB_VISDOC_*` - Visual document QA collections
+- `SLIDEVQA_TEST` - SlideVQA
+
+### Methods
+
+#### contains
+
+Checks if a path corresponds to a known qrels file.
+
+```java
+public static boolean contains(Path topicPath)
+```
+
+#### containsSymbol
+
+Checks if a symbol is recognized.
+
+```java
+public static boolean containsSymbol(Path topicPath)
+```
+
+#### extendSymbol
+
+Expands a symbol to its full filename.
+
+```java
+public static Path extendSymbol(Path symbol)
+```
+
+### Usage Examples
+
+```java
+import io.anserini.eval.Qrels;
+import java.nio.file.Path;
+
+public class QrelsEnumExample {
+    public static void main(String[] args) {
+        // Access predefined qrels
+        String msmarcoPath = Qrels.MSMARCO_PASSAGE_DEV_SUBSET.path;
+        System.out.println("MS MARCO qrels: " + msmarcoPath);
+        // Output: qrels.msmarco-passage.dev-subset.txt
+        
+        // Check if symbol exists
+        Path symbol = Path.of("msmarco-passage.dev");
+        if (Qrels.containsSymbol(symbol)) {
+            Path fullPath = Qrels.extendSymbol(symbol);
+            System.out.println("Expanded: " + fullPath);
+        }
+    }
+}
+```
+
+## RelevanceJudgments Class
+
+Loads and queries relevance judgment data.
+
+### Package
+
+`io.anserini.eval.RelevanceJudgments`
+
+### Constructors
+
+#### From File Path
+
+```java
+public RelevanceJudgments(String file) throws IOException
+```
+
+<ParamField path="file" type="String" required>
+  Path to qrels file, qrels symbol, or filename
+</ParamField>
+
+#### From Qrels Enum
+
+```java
+public static RelevanceJudgments fromQrels(Qrels qrels) throws IOException
+```
+
+<ParamField path="qrels" type="Qrels" required>
+  Qrels enum constant
+</ParamField>
+
+<ResponseField name="return" type="RelevanceJudgments">
+  Loaded relevance judgments
+</ResponseField>
+
+### Methods
+
+#### isDocJudged
+
+Checks if a document has been judged for a query.
+
+```java
+public boolean isDocJudged(String qid, String docid)
+```
+
+<ParamField path="qid" type="String" required>
+  Query ID
+</ParamField>
+
+<ParamField path="docid" type="String" required>
+  Document ID
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  True if the document has a judgment for this query
+</ResponseField>
+
+#### getRelevanceGrade
+
+Retrieves the relevance grade for a document.
+
+```java
+public <K> int getRelevanceGrade(K qid, String docid)
+```
+
+<ParamField path="qid" type="K" required>
+  Query ID (any type, typically String)
+</ParamField>
+
+<ParamField path="docid" type="String" required>
+  Document ID
+</ParamField>
+
+<ResponseField name="return" type="int">
+  Relevance grade (0 if not judged or non-relevant)
+</ResponseField>
+
+#### getQids
+
+Returns all query IDs in the qrels.
+
+```java
+public Set<String> getQids()
+```
+
+<ResponseField name="return" type="Set<String>">
+  Set of all query IDs
+</ResponseField>
+
+#### getDocMap
+
+Returns all judgments for a specific query.
+
+```java
+public Map<String, Integer> getDocMap(String qid)
+```
+
+<ParamField path="qid" type="String" required>
+  Query ID
+</ParamField>
+
+<ResponseField name="return" type="Map<String, Integer>">
+  Map of document IDs to relevance grades, or null if qid not found
+</ResponseField>
+
+### Static Utility Methods
+
+#### getQrelsPath
+
+Resolves a qrels path, downloading from cloud if needed.
+
+```java
+public static Path getQrelsPath(Path qrelsPath) throws IOException
+```
+
+<ParamField path="qrelsPath" type="Path" required>
+  Qrels filename, symbol, or local path
+</ParamField>
+
+<ResponseField name="return" type="Path">
+  Absolute path to qrels file (cached locally)
+</ResponseField>
+
+#### getQrelsResource
+
+Loads qrels content as a string.
+
+```java
+public static String getQrelsResource(Path qrelsPath) throws IOException
+```
+
+<ParamField path="qrelsPath" type="Path" required>
+  Qrels filename or symbol
+</ParamField>
+
+<ResponseField name="return" type="String">
+  Qrels file contents as string
+</ResponseField>
+
+#### downloadQrels
+
+Downloads qrels from the Anserini cloud repository.
+
+```java
+public static Path downloadQrels(Path qrelsPath) throws IOException
+```
+
+<ParamField path="qrelsPath" type="Path" required>
+  Qrels filename
+</ParamField>
+
+<ResponseField name="return" type="Path">
+  Path to downloaded qrels file in cache
+</ResponseField>
+
+## Usage Examples
+
+### Loading Qrels
+
+```java
+import io.anserini.eval.RelevanceJudgments;
+import io.anserini.eval.Qrels;
+import java.io.IOException;
+
+public class LoadQrelsExample {
+    public static void main(String[] args) throws IOException {
+        // Method 1: From enum
+        RelevanceJudgments qrels1 = 
+            RelevanceJudgments.fromQrels(Qrels.MSMARCO_PASSAGE_DEV_SUBSET);
+        
+        // Method 2: From symbol
+        RelevanceJudgments qrels2 = 
+            new RelevanceJudgments("msmarco-passage.dev");
+        
+        // Method 3: From file path
+        RelevanceJudgments qrels3 = 
+            new RelevanceJudgments("path/to/qrels.txt");
+        
+        System.out.println("Loaded " + qrels1.getQids().size() + " queries");
+    }
+}
+```
+
+### Checking Relevance
+
+```java
+import io.anserini.eval.RelevanceJudgments;
+import io.anserini.eval.Qrels;
+
+public class CheckRelevanceExample {
+    public static void main(String[] args) throws Exception {
+        RelevanceJudgments qrels = 
+            RelevanceJudgments.fromQrels(Qrels.MSMARCO_PASSAGE_DEV_SUBSET);
+        
+        String qid = "1";
+        String docid = "1234567";
+        
+        // Check if document is judged
+        if (qrels.isDocJudged(qid, docid)) {
+            int grade = qrels.getRelevanceGrade(qid, docid);
+            System.out.printf("Doc %s for query %s: grade %d%n", 
+                docid, qid, grade);
+        } else {
+            System.out.println("Document not judged");
+        }
+    }
+}
+```
+
+### Iterating Over Judgments
+
+```java
+import io.anserini.eval.RelevanceJudgments;
+import io.anserini.eval.Qrels;
+import java.util.Map;
+
+public class IterateJudgmentsExample {
+    public static void main(String[] args) throws Exception {
+        RelevanceJudgments qrels = 
+            RelevanceJudgments.fromQrels(Qrels.ROBUST04);
+        
+        // Iterate over all queries
+        for (String qid : qrels.getQids()) {
+            Map<String, Integer> docGrades = qrels.getDocMap(qid);
+            
+            // Count relevant documents
+            long relevantCount = docGrades.values().stream()
+                .filter(grade -> grade > 0)
+                .count();
+            
+            System.out.printf("Query %s: %d judged, %d relevant%n",
+                qid, docGrades.size(), relevantCount);
+        }
+    }
+}
+```
+
+### Computing Metrics Manually
+
+```java
+import io.anserini.eval.RelevanceJudgments;
+import io.anserini.eval.Qrels;
+import java.util.List;
+import java.util.Map;
+
+public class ComputeMetricsExample {
+    public static void main(String[] args) throws Exception {
+        RelevanceJudgments qrels = 
+            RelevanceJudgments.fromQrels(Qrels.MSMARCO_PASSAGE_DEV_SUBSET);
+        
+        String qid = "1";
+        List<String> rankedDocs = List.of(
+            "doc1", "doc2", "doc3", "doc4", "doc5",
+            "doc6", "doc7", "doc8", "doc9", "doc10"
+        );
+        
+        // Compute Precision@10
+        int relevant = 0;
+        for (String docid : rankedDocs) {
+            if (qrels.getRelevanceGrade(qid, docid) > 0) {
+                relevant++;
+            }
+        }
+        double precision10 = relevant / 10.0;
+        
+        System.out.printf("P@10 for query %s: %.3f%n", qid, precision10);
+    }
+}
+```
+
+### Filtering by Relevance Level
+
+```java
+import io.anserini.eval.RelevanceJudgments;
+import io.anserini.eval.Qrels;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+public class FilterByGradeExample {
+    public static void main(String[] args) throws Exception {
+        RelevanceJudgments qrels = 
+            RelevanceJudgments.fromQrels(Qrels.TREC2019_DL_PASSAGE);
+        
+        String qid = "1";
+        Map<String, Integer> allJudgments = qrels.getDocMap(qid);
+        
+        // Get highly relevant documents (grade >= 2)
+        Map<String, Integer> highlyRelevant = allJudgments.entrySet()
+            .stream()
+            .filter(e -> e.getValue() >= 2)
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        
+        System.out.println("Highly relevant docs: " + highlyRelevant.size());
+    }
+}
+```
+
+### Using with TrecEval
+
+```java
+import io.anserini.eval.RelevanceJudgments;
+import io.anserini.eval.TrecEval;
+import io.anserini.eval.Qrels;
+import java.nio.file.Path;
+
+public class CombinedEvaluationExample {
+    public static void main(String[] args) throws Exception {
+        // Load qrels
+        RelevanceJudgments qrels = 
+            RelevanceJudgments.fromQrels(Qrels.MSMARCO_PASSAGE_DEV_SUBSET);
+        
+        // Get qrels path for evaluation
+        Path qrelsPath = RelevanceJudgments.getQrelsPath(
+            Path.of("msmarco-passage.dev")
+        );
+        
+        // Run evaluation
+        TrecEval evaluator = new TrecEval();
+        String[][] results = evaluator.runAndGetOutput(new String[] {
+            "-m", "map",
+            "-m", "recip_rank",
+            qrelsPath.toString(),
+            "run.txt"
+        });
+        
+        // Process results...
+    }
+}
+```
+
+## Qrels File Format
+
+Qrels files use the standard TREC format:
+
+```
+qid iteration docid grade
+```
+
+**Example:**
+```
+1 0 doc123 1
+1 0 doc456 0
+1 0 doc789 2
+2 0 doc321 1
+```
+
+- **qid**: Query ID
+- **iteration**: Typically 0 (ignored)
+- **docid**: Document ID
+- **grade**: Relevance grade (0=not relevant, 1=relevant, 2+=highly relevant)
+
+## Qrels Caching
+
+Qrels are automatically cached in:
+
+```
+~/.cache/pyserini/topics-and-qrels/
+```
+
+Files are downloaded once from:
+```
+https://raw.githubusercontent.com/castorini/anserini-tools/master/topics-and-qrels/
+```
+
+## Exceptions
+
+<ResponseField name="IOException" type="Exception">
+  Thrown when qrels file cannot be read or downloaded
+</ResponseField>
+
+## See Also
+
+- [TrecEval API](/api/evaluation/trec-eval) - Running evaluations
+- [Search API](/api/search) - Generating rankings to evaluate

@@ -1,0 +1,192 @@
+---
+title: Information Retrieval Fundamentals
+description: Core concepts of information retrieval including queries, collections, relevance, and evaluation metrics
+---
+
+## What is Information Retrieval?
+
+Information retrieval (IR) is the problem of finding relevant information from large collections of documents. At its core, IR is about **search** - helping users find what they're looking for.
+
+<Note>
+With the rise of Large Language Models and RAG (Retrieval Augmented Generation), IR has become more important than ever. Retrieval forms the foundation of answer generation - if the retrieval quality isn't good, the LLM output will be garbage.
+</Note>
+
+## The Retrieval Problem Definition
+
+The formal definition of the text retrieval problem:
+
+> Given an information need expressed as a query _q_, the text retrieval task is to return a ranked list of _k_ texts from an arbitrarily large but finite collection of texts _C_ that maximizes a metric of interest, for example, nDCG, AP, etc.
+
+This problem goes by many names:
+- The **search problem**
+- The **information retrieval problem** 
+- The **text ranking problem**
+- The **top-k document retrieval problem**
+
+In most contexts, "ranking" and "retrieval" are used interchangeably.
+
+## Core Concepts
+
+### Queries
+
+A **query** is a representation of an information need - the reason you're looking for information in the first place. Queries serve as input to a retrieval system.
+
+In Anserini, queries are processed from topic files:
+
+```bash
+# Example query from MS MARCO
+1048585	what is paula deen's brother
+```
+
+The query ID (`qid`) uniquely identifies each query, and the query text represents the user's information need.
+
+### Collections and Documents
+
+The **collection** (or **corpus**) is what you're retrieving from - the set of documents you're searching. A collection comprises individual **documents**.
+
+<Info>
+In IR, we use "document" generically to refer to any discrete information object that can be retrieved - webpages, passages, PDFs, emails, or even images and videos.
+</Info>
+
+Example from MS MARCO passage collection:
+
+```json
+{
+  "id": "7187158",
+  "contents": "Paula Deen and her brother Earl W. Bubba Hiers are being sued by a former general manager at Uncle Bubba's..."
+}
+```
+
+The MS MARCO passage collection contains 8.8 million passages, each with a unique `docid`.
+
+### Rankings
+
+The output of retrieval is a **ranking** - a sorted list of documents ordered by relevance to the query. Rankings are represented as lists of document IDs:
+
+```
+qid     docid       rank
+1048585 7187158     1
+1048585 7187157     2  
+1048585 7187163     3
+```
+
+Document contents can then feed into downstream processing, such as being stuffed into LLM prompts for retrieval augmentation.
+
+### Relevance
+
+**Relevance** is the most important concept in information retrieval. It represents the relationship between an information need and a document:
+
+- **Does this document contain the information I'm looking for?**
+
+Relevance can be:
+- **Binary**: not relevant (0) or relevant (1)
+- **Graded**: not relevant, somewhat relevant, relevant, highly relevant (Likert scale)
+
+For query "what is paula deen's brother", the passage mentioning "Paula Deen and her brother Earl W. Bubba Hiers" is clearly relevant.
+
+## The Evaluation Problem
+
+How do you know if a retrieval system returns good results? You need three elements:
+
+### 1. Relevance Judgments (Qrels)
+
+**Relevance judgments** or **qrels** are human-annotated labels indicating which documents are relevant to which queries:
+
+```
+qid     docid    relevance
+1048585 7187158  1
+1048585 7187157  0
+1048585 7187163  0
+```
+
+These artifacts enable automatic evaluation of retrieval systems.
+
+### 2. Test Collections
+
+A complete **test collection** consists of:
+- A collection of documents (corpus)
+- A set of queries (topics)
+- Relevance judgments (qrels)
+
+MS MARCO passage ranking is one such test collection with:
+- 8.8M passages
+- 6,980 development queries  
+- 532K+ training queries with qrels
+
+### 3. Evaluation Metrics
+
+A **metric** quantifies the "goodness" of a ranked list. Common metrics include:
+
+#### Mean Reciprocal Rank (MRR)
+
+MRR measures where the first relevant document appears:
+- Rank 1 → score = 1.0
+- Rank 2 → score = 0.5  
+- Rank 3 → score = 0.333
+- No relevant in top-k → score = 0.0
+
+MRR@10 only considers the top 10 results. The final metric is averaged across all queries.
+
+```bash
+python tools/scripts/msmarco/msmarco_passage_eval.py \
+  qrels.dev.small.tsv run.msmarco-passage.bm25.tsv
+
+# Output:
+# MRR @10: 0.1874
+```
+
+#### Mean Average Precision (MAP)
+
+MAP computes average precision across all queries, considering all relevant documents and their positions in the ranking.
+
+#### Normalized Discounted Cumulative Gain (nDCG)
+
+nDCG evaluates ranking quality with graded relevance judgments, giving more weight to highly relevant documents appearing earlier in rankings.
+
+```bash
+bin/trec_eval -c -mmap -mndcg_cut.10 \
+  qrels.dev.small.trec run.msmarco-passage.bm25.trec
+```
+
+<Accordion title="Why Multiple Metrics?">
+All metrics are imperfect - they capture different aspects of ranking quality:
+
+- **MRR**: Good for scenarios where users want one answer (question answering)
+- **MAP**: Considers all relevant documents (comprehensive search)
+- **nDCG**: Handles graded relevance (some docs more useful than others)
+- **Precision@k**: Fraction of top-k that are relevant (user experience)
+- **Recall@k**: Fraction of all relevant docs in top-k (completeness)
+
+Higher is always better for these metrics.
+</Accordion>
+
+## Putting It All Together
+
+The IR research workflow:
+
+1. **Build/obtain a test collection** (documents, queries, qrels)
+2. **Index the collection** to create search data structures
+3. **Run retrieval** using your ranking model
+4. **Evaluate results** against qrels using metrics
+5. **Iterate** to improve the metric
+
+With metrics, we can compare systems, track progress, and build better retrieval models - often using machine learning to make the numbers go up.
+
+## Why This Matters
+
+Retrieval underpins modern AI applications:
+
+- **RAG systems**: ChatGPT search, Perplexity, Bing Chat
+- **Enterprise search**: Finding documents in large organizations
+- **Question answering**: Getting factual answers from text
+- **Recommendation**: Finding similar content
+
+As the saying goes: "[garbage in, garbage out](https://en.wikipedia.org/wiki/Garbage_in,_garbage_out)" - high-quality retrieval is essential for high-quality AI outputs.
+
+## Learn More
+
+For deeper understanding, see:
+
+- [Pretrained Transformers for Text Ranking: BERT and Beyond](https://arxiv.org/abs/2010.06467) (Chapter 2)
+- [MS MARCO: A Human Generated MAchine Reading COmprehension Dataset](https://arxiv.org/abs/1611.09268)
+- Anserini's [start-here guide](https://github.com/castorini/anserini/blob/master/docs/start-here.md)

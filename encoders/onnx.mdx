@@ -1,0 +1,618 @@
+---
+title: ONNX Integration
+description: ONNX Runtime integration and model optimization in Anserini
+---
+
+# ONNX Integration
+
+Anserini leverages [ONNX (Open Neural Network Exchange)](https://onnx.ai/) Runtime for fast, portable neural encoder inference. All encoder implementations in Anserini use ONNX models, providing significant performance and compatibility benefits over native PyTorch or TensorFlow models.
+
+## Why ONNX?
+
+ONNX provides several key advantages for production information retrieval systems:
+
+<CardGroup cols={3}>
+  <Card title="Performance" icon="gauge-high">
+    Optimized compute graphs reduce nodes by 60-70%, significantly improving inference speed
+  </Card>
+  <Card title="Portability" icon="laptop-mobile">
+    Single model format works across Python, Java, C++, and different hardware platforms
+  </Card>
+  <Card title="Efficiency" icon="bolt">
+    Graph fusion and operator optimization minimize scheduling overhead
+  </Card>
+</CardGroup>
+
+### Performance Impact
+
+For SPLADE++ Ensemble Distil model:
+
+```
+Original Model (PyTorch):
+  - Nodes: 1,504
+  - Inference: ~12ms per query
+
+Optimized ONNX Model:
+  - Nodes: 497 (67% reduction)
+  - Inference: ~4ms per query (3x speedup)
+```
+
+## ONNX Runtime in Anserini
+
+All Anserini encoders extend the base `OnnxEncoder` class, which handles:
+
+- Model downloading and caching
+- ONNX Runtime session management
+- Tokenization and vocabulary loading
+- Resource cleanup
+
+### Base Architecture
+
+```java
+public abstract class OnnxEncoder<T> implements AutoCloseable {
+    protected final BertFullTokenizer tokenizer;
+    protected final DefaultVocabulary vocab;
+    protected final OrtEnvironment environment;
+    protected final OrtSession session;
+    
+    public OnnxEncoder(String modelName, String modelUrl, 
+                       String vocabName, String vocabUrl, 
+                       String configUrl) throws IOException, OrtException {
+        // Download model and vocab if not cached
+        // Initialize ONNX Runtime session
+        // Create tokenizer
+    }
+    
+    public abstract T encode(String query) throws OrtException;
+    
+    public void close() {
+        // Clean up ONNX session
+    }
+}
+```
+
+See: `src/main/java/io/anserini/encoder/OnnxEncoder.java:36`
+
+### Model Caching
+
+Models are automatically downloaded and cached on first use:
+
+```java
+private static final String CACHE_DIR = 
+    Path.of(System.getProperty("user.home"), ".cache", "pyserini", "encoders").toString();
+
+public Path getModelPath() throws IOException, URISyntaxException {
+    File modelFile = new File(getCacheDir(), modelName);
+    if (!modelFile.exists()) {
+        FileUtils.copyURLToFile(new URI(modelUrl).toURL(), modelFile);
+        // Also download config if provided
+    }
+    return modelFile.toPath();
+}
+```
+
+See: `src/main/java/io/anserini/encoder/OnnxEncoder.java:101`
+
+**Cache Location**: `~/.cache/pyserini/encoders/`
+
+## Converting Models to ONNX
+
+Anserini uses optimized ONNX models hosted on Hugging Face. However, you can convert and optimize your own models for use with Anserini.
+
+### End-to-End Conversion Pipeline
+
+Anserini provides Python scripts for converting Hugging Face models to ONNX:
+
+```bash
+cd src/main/python/onnx
+
+# Convert PyTorch model to ONNX
+python convert_hf_model_to_onnx.py \
+    --model_name naver/splade-cocondenser-ensembledistil \
+    --text "what is AI?"
+
+# Optimize ONNX model
+python optimize_onnx_model.py \
+    --model_path models/splade-cocondenser-ensembledistil.onnx \
+    --stats
+
+# Test inference
+python run_onnx_model_inference.py \
+    --model_path models/splade-cocondenser-ensembledistil-optimized.onnx \
+    --model_name naver/splade-cocondenser-ensembledistil
+```
+
+<Note>
+These scripts are generic and work with any Hugging Face transformer model. Model structure is automatically detected.
+</Note>
+
+### Conversion Process
+
+<Steps>
+  <Step title="Load PyTorch Model">
+    Load the model from Hugging Face and prepare test inputs for validation.
+  </Step>
+  <Step title="Export to ONNX">
+    Use `torch.onnx.export()` to convert the model, specifying dynamic axes for variable-length inputs.
+  </Step>
+  <Step title="Add Metadata">
+    Embed model type, number of attention heads, and hidden size for optimization.
+  </Step>
+  <Step title="Validate Conversion">
+    Run inference on both PyTorch and ONNX models, compare outputs (L1 difference < 1e-2).
+  </Step>
+  <Step title="Optimize Graph">
+    Use ONNX Runtime optimizer to fuse operators and reduce compute graph.
+  </Step>
+  <Step title="Test Optimized Model">
+    Verify optimized model produces identical results to original ONNX model.
+  </Step>
+</Steps>
+
+### Conversion Script Details
+
+<Accordion title="Getting Output Specification">
+The conversion script automatically detects model output structure:
+
+```python
+def get_model_output_names(model, test_input):
+    with torch.no_grad():
+        outputs = model(**test_input)
+    
+    if isinstance(outputs, torch.Tensor):
+        return ['output']
+    elif hasattr(outputs, 'last_hidden_state'):
+        return ['last_hidden_state']
+    elif hasattr(outputs, 'logits'):
+        return ['logits']
+    else:
+        return [f'output_{i}' for i in range(len(outputs))]
+```
+
+This enables generic conversion without model-specific configuration.
+</Accordion>
+
+<Accordion title="Dynamic Axes Configuration">
+To support variable-length sequences:
+
+```python
+def get_dynamic_axes(input_names, output_names):
+    dynamic_axes = {}
+    for name in input_names:
+        dynamic_axes[name] = {0: 'batch_size', 1: 'sequence'}
+    for name in output_names:
+        dynamic_axes[name] = {0: 'batch_size', 1: 'sequence'}
+    return dynamic_axes
+```
+
+This allows the ONNX model to handle queries of any length.
+</Accordion>
+
+<Accordion title="Adding Metadata">
+Metadata is required for optimization:
+
+```python
+model_type = model.config.model_type
+num_heads = model.config.num_attention_heads
+hidden_size = model.config.hidden_size
+
+onnx_model = onnx.load(onnx_path)
+meta = onnx_model.metadata_props.add()
+meta.key, meta.value = 'model_type', model_type
+meta = onnx_model.metadata_props.add()
+meta.key, meta.value = 'num_heads', str(num_heads)
+meta = onnx_model.metadata_props.add()
+meta.key, meta.value = 'hidden_size', str(hidden_size)
+
+onnx.save(onnx_model, onnx_path)
+```
+</Accordion>
+
+## Optimizing ONNX Models
+
+ONNX Runtime includes a powerful optimizer that fuses operations and simplifies compute graphs.
+
+### Optimization Pipeline
+
+```bash
+cd src/main/python/onnx
+
+# Optimize with statistics
+python optimize_onnx_model.py \
+    --model_path models/splade-cocondenser-ensembledistil.onnx \
+    --stats
+```
+
+**Example Output**:
+
+```
+Original ONNX model summary:
+Number of nodes: 1504
+Number of inputs: 3
+Number of outputs: 2
+Initializers: 199
+
+==================================================
+
+Optimized ONNX model summary:
+Number of nodes: 497
+Number of inputs: 3
+Number of outputs: 2
+Initializers: 362
+
+Optimization reduced graph by 67%
+```
+
+### What Does Optimization Do?
+
+<AccordionGroup>
+  <Accordion title="Operator Fusion">
+    Combines multiple operations into single, efficient kernels:
+    
+    - **Layer Normalization Fusion**: Fuses add + layer norm into single op
+    - **Attention Fusion**: Combines Q/K/V projections and attention computation
+    - **Activation Fusion**: Merges activation functions with preceding operations
+    - **Batch Norm Fusion**: Combines batch norm with convolutions
+  </Accordion>
+
+  <Accordion title="Graph Simplification">
+    Removes redundant operations:
+    
+    - **Constant Folding**: Precomputes constant expressions
+    - **Dead Code Elimination**: Removes unused operations
+    - **Reshape Elimination**: Removes unnecessary shape transformations
+    - **Identity Elimination**: Removes no-op operations
+  </Accordion>
+
+  <Accordion title="Memory Optimization">
+    Reduces memory usage:
+    
+    - **In-place Operations**: Reuses buffers when possible
+    - **Memory Planning**: Optimizes tensor allocation and deallocation
+    - **Shared Buffers**: Reuses memory across operations
+  </Accordion>
+</AccordionGroup>
+
+### Optimization Script Details
+
+```python
+import onnx
+from onnxruntime.transformers import optimizer
+
+# Load model and metadata
+onnx_model = onnx.load(model_path)
+model_metadata = onnx_model.metadata_props
+
+model_type = next((prop.value for prop in model_metadata 
+                   if prop.key == 'model_type'), None)
+num_heads = next((int(prop.value) for prop in model_metadata 
+                  if prop.key == 'num_heads'), None)
+hidden_size = next((int(prop.value) for prop in model_metadata 
+                    if prop.key == 'hidden_size'), None)
+
+# Optimize
+optimized_model = optimizer.optimize_model(
+    model_path,
+    model_type=model_type,
+    num_heads=num_heads,
+    hidden_size=hidden_size
+)
+
+# Optional: Convert to FP16
+# optimized_model.convert_float_to_float16()
+
+# Save
+optimized_model.save_model_to_file(optimized_model_path)
+```
+
+## SPLADE-Specific Conversion
+
+SPLADE models require specialized conversion to embed post-processing logic in the ONNX graph.
+
+### Why Special Conversion?
+
+Standard ONNX export produces models that output `last_hidden_state` or `logits`. However, SPLADE models need additional processing:
+
+1. ReLU activation: `relu(logits)`
+2. Log saturation: `log(1 + relu(logits))`
+3. Max pooling: `max(log1p * attention_mask, dim=1)`
+4. Sparsification: Extract non-zero indices and values
+
+Anserini's SPLADE encoders expect `output_idx` and `output_weights` directly from the ONNX model.
+
+### Wrapper Implementation
+
+```python
+import torch
+import torch.nn as nn
+
+class SpladeExportWrapper(nn.Module):
+    def __init__(self, splade_model):
+        super().__init__()
+        self.splade = splade_model
+
+    def forward(self, input_ids, attention_mask, token_type_ids):
+        # Use token_type_ids in no-op to force ONNX to retain it
+        dummy = token_type_ids.sum() * 0.0
+        
+        outputs = self.splade(input_ids=input_ids, attention_mask=attention_mask)
+        logits = outputs.logits
+        
+        # SPLADE post-processing
+        relu = torch.relu(logits)
+        log1p = torch.log1p(relu)
+        sparse_vec = torch.max(log1p * attention_mask.unsqueeze(-1), dim=1).values
+        
+        # Extract non-zero indices and values
+        nonzero = sparse_vec.nonzero(as_tuple=True)
+        values = sparse_vec[nonzero]
+        
+        return nonzero[1], values + dummy
+```
+
+### Running SPLADE Conversion
+
+```bash
+cd src/main/python/onnx
+
+# Convert SPLADE model (model name is hardcoded in script)
+python splade_to_onnx.py
+
+# Optimize
+python optimize_onnx_model.py --model_path models/splade-pp-ed.onnx
+
+# Copy to cache for Anserini to use
+cp models/splade-pp-ed-optimized.onnx ~/.cache/pyserini/encoders/
+cp models/splade-cocondenser-ensembledistil-vocab.txt ~/.cache/pyserini/encoders/splade-pp-ed-vocab.txt
+```
+
+<Note>
+The `splade_to_onnx.py` script is pre-configured for `naver/splade-cocondenser-ensembledistil`. Edit the script to convert other SPLADE models.
+</Note>
+
+## Quantization (Optional)
+
+Further reduce model size and improve inference speed through quantization:
+
+```bash
+cd src/main/python/onnx
+
+python quantize_onnx_model.py \
+    --model_path models/splade-cocondenser-ensembledistil-optimized.onnx
+```
+
+### Quantization Details
+
+```python
+from onnxruntime.quantization import quantize_dynamic, QuantType
+import onnx
+
+base, ext = os.path.splitext(onnx_model_path)
+quantized_model_path = f"{base}-8bit{ext}"
+
+quantize_dynamic(
+    model_input=onnx_model_path,
+    model_output=quantized_model_path,
+    weight_type=QuantType.QInt8,
+    extra_options={'DefaultTensorType': onnx.TensorProto.FLOAT}
+)
+```
+
+**Trade-offs**:
+- **Model size**: 50-60% reduction
+- **Inference speed**: 20-30% improvement
+- **Accuracy**: Minimal degradation (typically < 0.5% difference in metrics)
+
+## Inference with ONNX Runtime
+
+Anserini's Java encoders handle ONNX inference internally, but understanding the process is helpful.
+
+### Java ONNX Inference
+
+```java
+import ai.onnxruntime.*;
+
+// Create session
+OrtEnvironment environment = OrtEnvironment.getEnvironment();
+OrtSession session = environment.createSession(modelPath, new OrtSession.SessionOptions());
+
+// Prepare inputs
+Map<String, OnnxTensor> inputs = new HashMap<>();
+inputs.put("input_ids", OnnxTensor.createTensor(environment, inputTokenIds));
+inputs.put("attention_mask", OnnxTensor.createTensor(environment, attentionMask));
+inputs.put("token_type_ids", OnnxTensor.createTensor(environment, tokenTypeIds));
+
+// Run inference
+try (OrtSession.Result results = session.run(inputs)) {
+    float[] output = (float[]) results.get(0).getValue();
+    // Process output
+}
+```
+
+### Python ONNX Inference
+
+```python
+import onnxruntime
+import numpy as np
+from transformers import AutoTokenizer
+
+# Create session
+model = onnxruntime.InferenceSession(model_path)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+# Prepare inputs
+text = "What is information retrieval?"
+inputs = tokenizer(text, return_tensors="np")
+
+# Add token_type_ids if needed
+if 'token_type_ids' not in inputs:
+    inputs['token_type_ids'] = np.zeros_like(inputs['input_ids'])
+
+# Run inference
+outputs = model.run(
+    None,
+    {name: inputs[name] for name in inputs 
+     if name in [input.name for input in model.get_inputs()]}
+)
+
+# Post-process (e.g., thresholding for sparse models)
+sparse_vector = outputs[0]
+sparse_vector[sparse_vector < 0.01] = 0.0
+```
+
+## Using Custom ONNX Models in Anserini
+
+To use your own ONNX models with Anserini:
+
+<Steps>
+  <Step title="Convert and Optimize Model">
+    Use the provided scripts to convert your Hugging Face model to optimized ONNX format.
+  </Step>
+  <Step title="Copy to Cache Directory">
+    Place model and vocabulary files in `~/.cache/pyserini/encoders/` with appropriate names.
+  </Step>
+  <Step title="Create Encoder Class">
+    Extend `DenseEncoder` or `SparseEncoder` and specify your model URLs.
+    
+    ```java
+    public class MyCustomEncoder extends DenseEncoder {
+        static private final String MODEL_URL = "file:///path/to/model.onnx";
+        static private final String VOCAB_URL = "file:///path/to/vocab.txt";
+        static private final String MODEL_NAME = "my-custom-model.onnx";
+        static private final String VOCAB_NAME = "my-custom-vocab.txt";
+        
+        public MyCustomEncoder() throws IOException, OrtException, URISyntaxException {
+            super(MODEL_NAME, MODEL_URL, VOCAB_NAME, VOCAB_URL, null);
+        }
+        
+        @Override
+        public float[] encode(String query) throws OrtException {
+            // Implement encoding logic
+        }
+    }
+    ```
+  </Step>
+  <Step title="Test Your Encoder">
+    Verify encoding produces expected results before using in production.
+  </Step>
+</Steps>
+
+## Performance Best Practices
+
+<AccordionGroup>
+  <Accordion title="Session Reuse">
+    Create encoder instances once and reuse:
+    
+    ```java
+    // Good: Reuse encoder
+    try (BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder()) {
+        for (String query : queries) {
+            float[] embedding = encoder.encode(query);
+        }
+    }
+    
+    // Bad: Create new encoder per query
+    for (String query : queries) {
+        try (BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder()) {
+            float[] embedding = encoder.encode(query);
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Batch Processing">
+    While current encoders process one query at a time, consider batching at the application level:
+    
+    ```java
+    List<String> queryBatch = new ArrayList<>();
+    List<float[]> embeddingBatch = new ArrayList<>();
+    
+    try (BgeBaseEn15Encoder encoder = new BgeBaseEn15Encoder()) {
+        for (String query : queries) {
+            embeddingBatch.add(encoder.encode(query));
+            
+            if (embeddingBatch.size() >= 32) {
+                processEmbeddings(queryBatch, embeddingBatch);
+                queryBatch.clear();
+                embeddingBatch.clear();
+            }
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Model Selection">
+    Choose the smallest model that meets your quality requirements:
+    
+    - For development/testing: Use smaller models (CosDPR, UniCoil)
+    - For production: Balance quality and latency (BGE-Base, SPLADE v3)
+    - For critical applications: Use larger models (BGE-Large, SPLADE++)
+  </Accordion>
+
+  <Accordion title="Resource Management">
+    Always close encoder sessions:
+    
+    ```java
+    // Preferred: try-with-resources
+    try (DenseEncoder encoder = new BgeBaseEn15Encoder()) {
+        // Use encoder
+    } // Automatically closed
+    
+    // Alternative: explicit close
+    DenseEncoder encoder = null;
+    try {
+        encoder = new BgeBaseEn15Encoder();
+        // Use encoder
+    } finally {
+        if (encoder != null) encoder.close();
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Model Download Failures">
+    If models fail to download automatically:
+    
+    1. Check internet connectivity
+    2. Manually download from Hugging Face URLs specified in encoder classes
+    3. Place files in `~/.cache/pyserini/encoders/`
+    4. Verify file names match encoder class constants
+  </Accordion>
+
+  <Accordion title="ONNX Runtime Errors">
+    Common issues:
+    
+    - **Incompatible opset**: Regenerate ONNX model with `opset_version=14`
+    - **Missing inputs**: Ensure all required inputs are provided (input_ids, attention_mask, token_type_ids)
+    - **Shape mismatches**: Verify input shapes match model expectations
+  </Accordion>
+
+  <Accordion title="Memory Issues">
+    If running out of memory:
+    
+    - Close encoder sessions when done
+    - Use smaller models (Base instead of Large)
+    - Consider quantized models
+    - Limit number of concurrent encoder instances
+  </Accordion>
+</AccordionGroup>
+
+## Additional Resources
+
+<CardGroup cols={2}>
+  <Card title="ONNX Documentation" icon="book" href="https://onnx.ai/">
+    Official ONNX specifications and tutorials
+  </Card>
+  <Card title="ONNX Runtime" icon="bolt" href="https://onnxruntime.ai/">
+    ONNX Runtime documentation and performance guides
+  </Card>
+  <Card title="Dense Encoders" icon="circle-dot" href="/encoders/dense-encoders">
+    Learn about dense encoder implementations
+  </Card>
+  <Card title="Sparse Encoders" icon="grip" href="/encoders/sparse-encoders">
+    Explore sparse encoder implementations
+  </Card>
+</CardGroup>

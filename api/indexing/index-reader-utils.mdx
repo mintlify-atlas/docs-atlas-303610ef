@@ -1,0 +1,658 @@
+---
+title: IndexReaderUtils
+description: API reference for reading and querying Lucene indexes
+---
+
+## Overview
+
+`IndexReaderUtils` provides a comprehensive set of static utility methods for accessing and querying Lucene indexes. This class is the primary interface for index introspection and is extensively used by Pyserini.
+
+**Package:** `io.anserini.index`
+
+## Core Methods
+
+### getReader
+
+```java
+public static IndexReader getReader(String path) throws IOException
+```
+
+Creates an IndexReader from an index path.
+
+<ParamField path="path" type="String" required>
+  Path to the Lucene index directory
+</ParamField>
+
+<ResponseField name="return" type="IndexReader">
+  Lucene IndexReader instance for the index
+</ResponseField>
+
+**Example:**
+```java
+import io.anserini.index.IndexReaderUtils;
+import org.apache.lucene.index.IndexReader;
+
+IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+```
+
+---
+
+## Index Statistics
+
+### getIndexStats
+
+```java
+public static Map<String, Object> getIndexStats(IndexReader reader, String field)
+public static Map<String, Object> getIndexStats(IndexReader reader)
+```
+
+Retrieves comprehensive index statistics.
+
+<ParamField path="reader" type="IndexReader" required>
+  Index reader instance
+</ParamField>
+
+<ParamField path="field" type="String" default="contents">
+  Field to compute statistics for
+</ParamField>
+
+<ResponseField name="return" type="Map<String, Object>">
+  Map containing:
+  - `documents`: Total number of documents
+  - `non_empty_documents`: Documents with non-empty field
+  - `total_terms`: Total term occurrences
+  - `unique_terms`: Number of unique terms
+</ResponseField>
+
+**Example:**
+```java
+import io.anserini.index.IndexReaderUtils;
+import org.apache.lucene.index.IndexReader;
+import java.util.Map;
+
+IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+Map<String, Object> stats = IndexReaderUtils.getIndexStats(reader);
+
+System.out.println("Documents: " + stats.get("documents"));
+System.out.println("Unique terms: " + stats.get("unique_terms"));
+System.out.println("Total terms: " + stats.get("total_terms"));
+```
+
+### getIndexStatsSummary
+
+```java
+public static String getIndexStatsSummary(String index, String field) throws IOException
+```
+
+Returns a formatted string summary of index statistics including disk size.
+
+<ParamField path="index" type="String" required>
+  Index path or prebuilt index identifier
+</ParamField>
+
+<ParamField path="field" type="String" required>
+  Field to analyze
+</ParamField>
+
+<ResponseField name="return" type="String">
+  Formatted statistics summary
+</ResponseField>
+
+**Example:**
+```java
+String summary = IndexReaderUtils.getIndexStatsSummary("/path/to/index", "contents");
+System.out.println(summary);
+// Output:
+// Index statistics
+// ----------------
+// documents:             8841823
+// documents (non-empty): 8841823
+// unique terms:          2660824
+// total terms:           3562591984
+// index_path:            /path/to/index
+// total_size:            9.8 GB
+```
+
+---
+
+## Term and Posting Information
+
+### getTermCounts
+
+```java
+public static Map<String, Long> getTermCounts(IndexReader reader, String termStr) throws IOException
+public static Map<String, Long> getTermCountsWithAnalyzer(IndexReader reader, String termStr, Analyzer analyzer) throws IOException
+```
+
+Returns document frequency and collection frequency for a term or phrase.
+
+<ParamField path="reader" type="IndexReader" required>
+  Index reader
+</ParamField>
+
+<ParamField path="termStr" type="String" required>
+  Term or phrase to look up
+</ParamField>
+
+<ParamField path="analyzer" type="Analyzer">
+  Analyzer to use (defaults to `IndexCollection.DEFAULT_ANALYZER`)
+</ParamField>
+
+<ResponseField name="return" type="Map<String, Long>">
+  For single terms: `docFreq` and `collectionFreq`  
+  For phrases: `docFreq` only
+</ResponseField>
+
+**Example:**
+```java
+IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+
+// Single term
+Map<String, Long> counts = IndexReaderUtils.getTermCounts(reader, "information");
+System.out.println("DF: " + counts.get("docFreq"));
+System.out.println("CF: " + counts.get("collectionFreq"));
+
+// Phrase
+Map<String, Long> phraseCounts = IndexReaderUtils.getTermCounts(reader, "information retrieval");
+System.out.println("Phrase DF: " + phraseCounts.get("docFreq"));
+```
+
+### getDF
+
+```java
+public static long getDF(IndexReader reader, String term)
+```
+
+Returns the document frequency of an analyzed term.
+
+<ParamField path="reader" type="IndexReader" required>
+  Index reader
+</ParamField>
+
+<ParamField path="term" type="String" required>
+  Analyzed term
+</ParamField>
+
+<ResponseField name="return" type="long">
+  Document frequency
+</ResponseField>
+
+### getTerms
+
+```java
+public static Iterator<IndexTerm> getTerms(IndexReader reader) throws IOException
+```
+
+Returns an iterator over all terms in the index.
+
+<ResponseField name="return" type="Iterator<IndexTerm>">
+  Iterator over IndexTerm objects
+</ResponseField>
+
+**Example:**
+```java
+IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+Iterator<IndexReaderUtils.IndexTerm> terms = IndexReaderUtils.getTerms(reader);
+
+int count = 0;
+while (terms.hasNext() && count++ < 10) {
+    IndexReaderUtils.IndexTerm term = terms.next();
+    System.out.printf("%s: DF=%d, CF=%d%n", 
+        term.getTerm(), term.getDF(), term.getTotalTF());
+}
+```
+
+### getPostingsList
+
+```java
+public static List<Posting> getPostingsList(IndexReader reader, String term)
+public static List<Posting> getPostingsList(IndexReader reader, String term, boolean analyze)
+public static List<Posting> getPostingsList(IndexReader reader, String term, Analyzer analyzer)
+```
+
+Retrieves the postings list for a term.
+
+<ParamField path="reader" type="IndexReader" required>
+  Index reader
+</ParamField>
+
+<ParamField path="term" type="String" required>
+  Term to look up
+</ParamField>
+
+<ParamField path="analyze" type="boolean" default="true">
+  Whether to analyze the term before lookup
+</ParamField>
+
+<ParamField path="analyzer" type="Analyzer">
+  Custom analyzer to use
+</ParamField>
+
+<ResponseField name="return" type="List<Posting>">
+  List of Posting objects containing docid, term frequency, and positions
+</ResponseField>
+
+**Example:**
+```java
+IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+List<IndexReaderUtils.Posting> postings = 
+    IndexReaderUtils.getPostingsList(reader, "retrieval");
+
+for (IndexReaderUtils.Posting posting : postings) {
+    System.out.printf("DocID: %d, TF: %d, Positions: %s%n",
+        posting.getDocid(), 
+        posting.getTF(),
+        Arrays.toString(posting.getPositions()));
+}
+```
+
+---
+
+## Document Access
+
+### document
+
+```java
+public static Document document(IndexReader reader, String docid)
+```
+
+Retrieves a Lucene Document by collection docid.
+
+<ParamField path="reader" type="IndexReader" required>
+  Index reader
+</ParamField>
+
+<ParamField path="docid" type="String" required>
+  Collection document ID
+</ParamField>
+
+<ResponseField name="return" type="Document">
+  Lucene Document object, or null if not found
+</ResponseField>
+
+**Example:**
+```java
+IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+Document doc = IndexReaderUtils.document(reader, "doc-001");
+
+if (doc != null) {
+    System.out.println("ID: " + doc.get("id"));
+    System.out.println("Contents: " + doc.get("contents"));
+}
+```
+
+### documentByField
+
+```java
+public static Document documentByField(IndexReader reader, String field, String id)
+```
+
+Retrieves a document by a custom field value (e.g., DOI, ISBN).
+
+<ParamField path="reader" type="IndexReader" required>
+  Index reader
+</ParamField>
+
+<ParamField path="field" type="String" required>
+  Field name to search
+</ParamField>
+
+<ParamField path="id" type="String" required>
+  Field value to match
+</ParamField>
+
+### documentRaw
+
+```java
+public static String documentRaw(IndexReader reader, String docid)
+```
+
+Retrieves the "raw" field of a document (original source).
+
+### documentContents
+
+```java
+public static String documentContents(IndexReader reader, String docid)
+```
+
+Retrieves the "contents" field of a document (indexed text).
+
+---
+
+## Document Vectors
+
+### getDocumentVector
+
+```java
+public static Map<String, Long> getDocumentVector(IndexReader reader, String docid) 
+    throws IOException, NotStoredException
+```
+
+Returns the document vector as a term frequency map.
+
+<ParamField path="reader" type="IndexReader" required>
+  Index reader
+</ParamField>
+
+<ParamField path="docid" type="String" required>
+  Collection document ID
+</ParamField>
+
+<ResponseField name="return" type="Map<String, Long>">
+  Map from term to term frequency
+</ResponseField>
+
+**Example:**
+```java
+try {
+    Map<String, Long> vector = IndexReaderUtils.getDocumentVector(reader, "doc-001");
+    
+    // Print top 10 terms by frequency
+    vector.entrySet().stream()
+        .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+        .limit(10)
+        .forEach(e -> System.out.println(e.getKey() + ": " + e.getValue()));
+        
+} catch (IndexReaderUtils.NotStoredException e) {
+    System.err.println("Document vectors not stored in this index");
+}
+```
+
+### getDocumentTokens
+
+```java
+public static List<String> getDocumentTokens(IndexReader reader, String docid) 
+    throws IOException, NotStoredException
+```
+
+Returns the document vector as an ordered list of tokens (preserves positions).
+
+<ResponseField name="return" type="List<String>">
+  Ordered list of tokens in the document
+</ResponseField>
+
+### getTermPositions
+
+```java
+public static Map<String, List<Integer>> getTermPositions(IndexReader reader, String docid) 
+    throws IOException, NotStoredException
+```
+
+Returns term positions within a document.
+
+<ResponseField name="return" type="Map<String, List<Integer>>">
+  Map from term to list of positions where it appears
+</ResponseField>
+
+---
+
+## Scoring and Relevance
+
+### getBM25AnalyzedTermWeight
+
+```java
+public static float getBM25AnalyzedTermWeight(IndexReader reader, String docid, String term) throws IOException
+public static float getBM25AnalyzedTermWeightWithParameters(IndexReader reader, String docid, 
+    String term, float k1, float b) throws IOException
+```
+
+Computes the BM25 weight of a term in a document.
+
+<ParamField path="reader" type="IndexReader" required>
+  Index reader
+</ParamField>
+
+<ParamField path="docid" type="String" required>
+  Document ID
+</ParamField>
+
+<ParamField path="term" type="String" required>
+  Analyzed term
+</ParamField>
+
+<ParamField path="k1" type="float" default="0.9">
+  BM25 k1 parameter
+</ParamField>
+
+<ParamField path="b" type="float" default="0.4">
+  BM25 b parameter
+</ParamField>
+
+<ResponseField name="return" type="float">
+  BM25 weight of the term in the document
+</ResponseField>
+
+**Example:**
+```java
+IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+
+float weight = IndexReaderUtils.getBM25AnalyzedTermWeight(
+    reader, "doc-001", "retrieval");
+System.out.println("BM25 weight: " + weight);
+
+// With custom parameters
+float customWeight = IndexReaderUtils.getBM25AnalyzedTermWeightWithParameters(
+    reader, "doc-001", "retrieval", 1.2f, 0.75f);
+```
+
+### getBM25UnanalyzedTermWeight
+
+```java
+public static float getBM25UnanalyzedTermWeight(IndexReader reader, String docid, String term) throws IOException
+public static float getBM25UnanalyzedTermWeightWithParameters(IndexReader reader, String docid, 
+    String term, Analyzer analyzer, float k1, float b) throws IOException
+```
+
+Computes BM25 weight for an unanalyzed term (analyzes it first).
+
+### computeQueryDocumentScore
+
+```java
+public static float computeQueryDocumentScore(IndexReader reader, String docid, String query) throws IOException
+public static float computeQueryDocumentScoreWithSimilarity(IndexReader reader, String docid, 
+    String query, Similarity similarity) throws IOException
+public static float computeQueryDocumentScoreWithSimilarityAndAnalyzer(IndexReader reader, String docid, 
+    String query, Similarity similarity, Analyzer analyzer) throws IOException
+```
+
+Computes the score of a document with respect to a query.
+
+<ParamField path="reader" type="IndexReader" required>
+  Index reader
+</ParamField>
+
+<ParamField path="docid" type="String" required>
+  Document ID
+</ParamField>
+
+<ParamField path="query" type="String" required>
+  Query string
+</ParamField>
+
+<ParamField path="similarity" type="Similarity">
+  Lucene similarity function (defaults to BM25)
+</ParamField>
+
+<ParamField path="analyzer" type="Analyzer">
+  Analyzer to use
+</ParamField>
+
+<ResponseField name="return" type="float">
+  Query-document score
+</ResponseField>
+
+**Example:**
+```java
+IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+
+float score = IndexReaderUtils.computeQueryDocumentScore(
+    reader, "doc-001", "information retrieval");
+System.out.println("Query score: " + score);
+```
+
+---
+
+## Document ID Conversion
+
+### convertDocidToLuceneDocid
+
+```java
+public static int convertDocidToLuceneDocid(IndexReader reader, String docid)
+```
+
+Converts a collection docid to Lucene's internal docid.
+
+<ResponseField name="return" type="int">
+  Lucene internal docid, or -1 if not found
+</ResponseField>
+
+### convertLuceneDocidToDocid
+
+```java
+public static String convertLuceneDocidToDocid(IndexReader reader, int docid)
+```
+
+Converts Lucene's internal docid to collection docid.
+
+<ResponseField name="return" type="String">
+  Collection docid, or null if not found
+</ResponseField>
+
+---
+
+## Field Information
+
+### getFieldInfo
+
+```java
+public static Map<String, FieldInfo> getFieldInfo(IndexReader reader)
+```
+
+Returns FieldInfo for all indexed fields.
+
+<ResponseField name="return" type="Map<String, FieldInfo>">
+  Map from field name to FieldInfo object
+</ResponseField>
+
+### getFieldInfoDescription
+
+```java
+public static Map<String, String> getFieldInfoDescription(IndexReader reader)
+```
+
+Returns human-readable field information.
+
+<ResponseField name="return" type="Map<String, String>">
+  Map from field name to description string
+</ResponseField>
+
+**Example:**
+```java
+IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+Map<String, String> fields = IndexReaderUtils.getFieldInfoDescription(reader);
+
+fields.forEach((name, desc) -> 
+    System.out.println(name + ": " + desc));
+// Output:
+// id: (indexOption: DOCS, hasVectors: false)
+// contents: (indexOption: DOCS_AND_FREQS_AND_POSITIONS, hasVectors: true)
+```
+
+---
+
+## Helper Classes
+
+### IndexTerm
+
+Represents a term in the index vocabulary.
+
+**Methods:**
+- `String getTerm()`: Returns the term string
+- `int getDF()`: Returns document frequency
+- `long getTotalTF()`: Returns collection frequency
+
+### Posting
+
+Represents a posting in a postings list.
+
+**Methods:**
+- `int getDocid()`: Returns internal Lucene docid
+- `int getTF()`: Returns term frequency in the document
+- `int[] getPositions()`: Returns positions where term appears
+
+---
+
+## CLI Usage
+
+IndexReaderUtils provides a simple CLI for index statistics:
+
+```bash
+java -cp anserini-fatjar.jar io.anserini.index.IndexReaderUtils \
+  -index /path/to/index \
+  -stats
+```
+
+---
+
+## Complete Example
+
+```java
+import io.anserini.index.IndexReaderUtils;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.document.Document;
+import java.util.Map;
+import java.util.List;
+
+public class IndexAnalysis {
+    public static void main(String[] args) throws Exception {
+        // Open the index
+        IndexReader reader = IndexReaderUtils.getReader("/path/to/index");
+        
+        // Get index statistics
+        Map<String, Object> stats = IndexReaderUtils.getIndexStats(reader);
+        System.out.println("Total documents: " + stats.get("documents"));
+        System.out.println("Unique terms: " + stats.get("unique_terms"));
+        
+        // Look up term statistics
+        Map<String, Long> termCounts = IndexReaderUtils.getTermCounts(reader, "retrieval");
+        System.out.println("Term DF: " + termCounts.get("docFreq"));
+        System.out.println("Term CF: " + termCounts.get("collectionFreq"));
+        
+        // Get document by ID
+        Document doc = IndexReaderUtils.document(reader, "doc-001");
+        if (doc != null) {
+            System.out.println("Found document: " + doc.get("id"));
+            
+            // Get document vector
+            try {
+                Map<String, Long> vector = IndexReaderUtils.getDocumentVector(reader, "doc-001");
+                System.out.println("Document has " + vector.size() + " unique terms");
+            } catch (IndexReaderUtils.NotStoredException e) {
+                System.out.println("Document vectors not stored");
+            }
+        }
+        
+        // Compute BM25 score
+        float score = IndexReaderUtils.computeQueryDocumentScore(
+            reader, "doc-001", "information retrieval");
+        System.out.println("BM25 score: " + score);
+        
+        // Get postings list
+        List<IndexReaderUtils.Posting> postings = 
+            IndexReaderUtils.getPostingsList(reader, "retrieval");
+        System.out.println("Postings list length: " + postings.size());
+        
+        reader.close();
+    }
+}
+```
+
+---
+
+## Notes
+
+- Most methods silently return `null` or empty results on errors (check return values)
+- Methods that require stored document vectors throw `NotStoredException` if vectors aren't available
+- The class is thread-safe for read operations
+- Extensively used by Pyserini for Python bindings
+- Default analyzer is `IndexCollection.DEFAULT_ANALYZER` (English with Porter stemming)

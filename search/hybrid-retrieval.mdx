@@ -1,0 +1,400 @@
+---
+title: Hybrid Retrieval
+description: Combining sparse and dense retrieval for best-of-both-worlds search
+---
+
+Hybrid retrieval combines the strengths of sparse (lexical) and dense (semantic) retrieval methods. By fusing results from both approaches, you can achieve better effectiveness than either method alone.
+
+## Why Hybrid Retrieval?
+
+Each retrieval paradigm has complementary strengths:
+
+| Aspect | Sparse (BM25, SPLADE) | Dense (BGE, DPR) |
+|--------|----------------------|------------------|
+| **Matching** | Exact term overlap | Semantic similarity |
+| **Strengths** | Rare terms, entities, precise matches | Paraphrases, synonyms, conceptual relevance |
+| **Weaknesses** | Vocabulary mismatch | Poor on rare terms, entities |
+| **Interpretability** | High (term-based) | Low (black-box embeddings) |
+
+<Note>
+Hybrid retrieval consistently outperforms either approach alone across diverse test collections, especially on queries requiring both lexical precision and semantic understanding.
+</Note>
+
+## Fusion Strategies
+
+### Linear Score Fusion
+
+The simplest approach combines normalized scores from each system:
+
+```
+score_hybrid = α × score_sparse + (1 - α) × score_dense
+```
+
+Where `α` controls the weight given to sparse vs dense retrieval.
+
+### Rank Fusion
+
+#### Reciprocal Rank Fusion (RRF)
+
+RRF is parameter-free and effective:
+
+```
+RRF_score(d) = Σ [1 / (k + rank_i(d))]
+```
+
+For document `d` across systems `i`, with constant `k` (typically 60).
+
+## Hybrid Search Workflow
+
+<Steps>
+  <Step title="Run Sparse Retrieval">
+    Generate sparse retrieval results (e.g., BM25 or SPLADE)
+    
+    ```bash
+    java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+      -index msmarco-v1-passage \
+      -topics msmarco-v1-passage.dev \
+      -output run.sparse.txt \
+      -bm25 -hits 1000
+    ```
+  </Step>
+  
+  <Step title="Run Dense Retrieval">
+    Generate dense retrieval results
+    
+    ```bash
+    java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+      -index msmarco-v1-passage.bge-base-en-v1.5.hnsw \
+      -topics msmarco-v1-passage.dev \
+      -encoder BgeBaseEn15 \
+      -output run.dense.txt \
+      -hits 1000
+    ```
+  </Step>
+  
+  <Step title="Fuse Results">
+    Use Pyserini or custom script to fuse run files
+    
+    ```python
+    from pyserini.fusion import FusionMethod, FusionStrategy
+    
+    # Reciprocal Rank Fusion
+    fused_run = FusionStrategy.fuse_runs(
+        ['run.sparse.txt', 'run.dense.txt'],
+        method=FusionMethod.RRF,
+        k=60
+    )
+    ```
+  </Step>
+  
+  <Step title="Evaluate">
+    Evaluate the fused results
+    
+    ```bash
+    java -cp anserini-1.6.0-fatjar.jar trec_eval -c -M 10 -m recip_rank \
+      msmarco-v1-passage.dev run.hybrid.txt
+    ```
+  </Step>
+</Steps>
+
+## Example: BM25 + BGE Hybrid
+
+<CodeGroup>
+```bash Step 1: BM25 Retrieval
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.bm25.txt \
+  -bm25 -hits 1000
+```
+
+```bash Step 2: BGE Dense Retrieval
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchHnswDenseVectors \
+  -index msmarco-v1-passage.bge-base-en-v1.5.hnsw \
+  -topics msmarco-v1-passage.dev \
+  -encoder BgeBaseEn15 \
+  -output run.bge.txt \
+  -efSearch 1000 -hits 1000
+```
+
+```python Step 3: RRF Fusion (Pyserini)
+from pyserini.fusion import reciprocal_rank_fusion
+
+rrf_results = reciprocal_rank_fusion(
+    ['run.bm25.txt', 'run.bge.txt'],
+    output='run.hybrid-rrf.txt',
+    k=60
+)
+```
+</CodeGroup>
+
+**Expected Results (MS MARCO Passage Dev):**
+- BM25 alone: MRR@10 = 0.1840
+- BGE alone: MRR@10 = 0.3575  
+- **BM25 + BGE (RRF)**: MRR@10 ≈ **0.370** (estimated)
+
+<Note>
+Hybrid retrieval provides modest but consistent improvements. The gain is larger when sparse and dense systems have complementary strengths.
+</Note>
+
+## Learned Sparse + Dense Hybrid
+
+Combining learned sparse (SPLADE) with dense retrieval achieves state-of-the-art results:
+
+```bash SPLADE-v3 Retrieval
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage.splade-v3 \
+  -topics msmarco-v1-passage.dev \
+  -encoder SpladeV3 \
+  -output run.splade.txt \
+  -impact -pretokenized -hits 1000
+```
+
+**Results:**
+- SPLADE-v3: MRR@10 = 0.4000
+- BGE-base: MRR@10 = 0.3575
+- **SPLADE-v3 + BGE**: MRR@10 ≈ **0.415+** (with proper fusion)
+
+## Choosing Fusion Weights
+
+### Grid Search Approach
+
+Test different α values on a development set:
+
+```python
+import numpy as np
+
+best_mrr = 0
+best_alpha = 0
+
+for alpha in np.arange(0, 1.1, 0.1):
+    # Fuse with current alpha
+    fused_scores = alpha * sparse_scores + (1 - alpha) * dense_scores
+    
+    # Evaluate
+    mrr = evaluate_mrr(fused_scores, qrels)
+    
+    if mrr > best_mrr:
+        best_mrr = mrr
+        best_alpha = alpha
+
+print(f"Best α: {best_alpha}, MRR@10: {best_mrr}")
+```
+
+### Typical Weight Ranges
+
+| Sparse Method | Dense Method | Suggested α |
+|---------------|--------------|-------------|
+| BM25 | BGE/DPR | 0.3-0.5 |
+| SPLADE | BGE/DPR | 0.5-0.6 |
+| BM25 | Cohere v3 | 0.2-0.4 |
+
+<Note>
+Optimal fusion weights vary by collection and query distribution. Always tune on a held-out development set.
+</Note>
+
+## Multi-Stage Hybrid Pipeline
+
+For production systems, use a cascaded approach:
+
+<Steps>
+  <Step title="Stage 1: Sparse Retrieval">
+    Fast first-stage retrieval with BM25 or SPLADE
+    
+    - Retrieve top-1000 candidates
+    - Handles exact matching, entities
+    - Very efficient (~1-10ms per query)
+  </Step>
+  
+  <Step title="Stage 2: Dense Re-ranking">
+    Re-rank sparse results with dense vectors
+    
+    - Score top-100 sparse results with dense encoder
+    - Adds semantic relevance signal
+    - Still fast (~10-50ms)
+  </Step>
+  
+  <Step title="Stage 3: Fusion">
+    Combine sparse and dense scores
+    
+    - Linear fusion or RRF on top-100
+    - Produces final ranking
+  </Step>
+  
+  <Step title="Stage 4: Neural Re-ranking (Optional)">
+    Apply cross-encoder for top-k results
+    
+    - Use models like monoT5, BERT re-ranker
+    - Highest quality but slowest
+    - Only on top-10 to top-20
+  </Step>
+</Steps>
+
+## Implementation Example
+
+Here's a complete hybrid retrieval script:
+
+```python
+import subprocess
+import json
+from collections import defaultdict
+
+def run_sparse_retrieval(index, topics, output):
+    """Run BM25 sparse retrieval"""
+    cmd = [
+        'java', '-cp', 'anserini-1.6.0-fatjar.jar',
+        'io.anserini.search.SearchCollection',
+        '-index', index,
+        '-topics', topics,
+        '-output', output,
+        '-bm25', '-hits', '1000'
+    ]
+    subprocess.run(cmd, check=True)
+
+def run_dense_retrieval(index, topics, encoder, output):
+    """Run dense vector retrieval"""
+    cmd = [
+        'java', '-cp', 'anserini-1.6.0-fatjar.jar',
+        'io.anserini.search.SearchHnswDenseVectors',
+        '-index', index,
+        '-topics', topics,
+        '-encoder', encoder,
+        '-output', output,
+        '-hits', '1000'
+    ]
+    subprocess.run(cmd, check=True)
+
+def load_run(filepath):
+    """Load TREC run file"""
+    run = defaultdict(dict)
+    with open(filepath) as f:
+        for line in f:
+            qid, _, docid, rank, score, _ = line.strip().split()
+            run[qid][docid] = float(score)
+    return run
+
+def reciprocal_rank_fusion(runs, k=60):
+    """Perform RRF on multiple runs"""
+    fused = defaultdict(dict)
+    
+    for qid in runs[0].keys():
+        scores = defaultdict(float)
+        
+        for run in runs:
+            # Sort by score and assign ranks
+            sorted_docs = sorted(run[qid].items(), 
+                               key=lambda x: x[1], reverse=True)
+            for rank, (docid, _) in enumerate(sorted_docs, 1):
+                scores[docid] += 1.0 / (k + rank)
+        
+        fused[qid] = scores
+    
+    return fused
+
+def write_run(run, output_path, runtag='hybrid'):
+    """Write fused results as TREC run"""
+    with open(output_path, 'w') as f:
+        for qid, doc_scores in run.items():
+            sorted_docs = sorted(doc_scores.items(), 
+                               key=lambda x: x[1], reverse=True)
+            for rank, (docid, score) in enumerate(sorted_docs[:1000], 1):
+                f.write(f"{qid} Q0 {docid} {rank} {score} {runtag}\n")
+
+# Main hybrid pipeline
+if __name__ == '__main__':
+    # Step 1: Sparse retrieval
+    run_sparse_retrieval(
+        'msmarco-v1-passage',
+        'msmarco-v1-passage.dev',
+        'run.sparse.txt'
+    )
+    
+    # Step 2: Dense retrieval
+    run_dense_retrieval(
+        'msmarco-v1-passage.bge-base-en-v1.5.hnsw',
+        'msmarco-v1-passage.dev',
+        'BgeBaseEn15',
+        'run.dense.txt'
+    )
+    
+    # Step 3: Load runs
+    sparse_run = load_run('run.sparse.txt')
+    dense_run = load_run('run.dense.txt')
+    
+    # Step 4: Fuse with RRF
+    fused_run = reciprocal_rank_fusion([sparse_run, dense_run], k=60)
+    
+    # Step 5: Write output
+    write_run(fused_run, 'run.hybrid.txt', runtag='BM25+BGE-RRF')
+    
+    print("Hybrid retrieval complete! Evaluate with:")
+    print("  trec_eval -c -M 10 -m recip_rank msmarco-v1-passage.dev run.hybrid.txt")
+```
+
+## When to Use Hybrid
+
+<CardGroup cols={2}>
+  <Card title="Use Hybrid When" icon="check">
+    - Queries mix entities and concepts
+    - Need robust cross-domain retrieval
+    - Production system (belt-and-suspenders)
+    - Optimizing for top-10 precision
+  </Card>
+  
+  <Card title="Sparse Alone May Suffice" icon="database">
+    - Entity-heavy queries (e.g., biomedical)
+    - Very large collections (>100M docs)
+    - Resource constraints (latency/cost)
+    - Learned sparse (SPLADE) already strong
+  </Card>
+</CardGroup>
+
+## Performance Benchmarks
+
+### MS MARCO Passage (Dev)
+
+| Configuration | MRR@10 | Latency (avg) |
+|---------------|--------|---------------|
+| BM25 | 0.1840 | ~2ms |
+| SPLADE-v3 | 0.4000 | ~5ms |
+| BGE (HNSW) | 0.3575 | ~15ms |
+| BM25 + BGE (RRF) | ~0.370 | ~17ms |
+| SPLADE + BGE (RRF) | ~0.415 | ~20ms |
+
+<Note>
+Latencies are approximate single-query estimates. Multi-threaded batch processing significantly improves throughput.
+</Note>
+
+## Advanced: Learning Fusion Weights
+
+For best results, train fusion weights on labeled data:
+
+```python
+from sklearn.linear_model import LogisticRegression
+import numpy as np
+
+# Collect features: [sparse_score, dense_score]
+X_train = np.array([
+    [sparse_scores[q][d], dense_scores[q][d]] 
+    for q in queries for d in candidates
+])
+
+# Binary labels: relevant or not
+y_train = np.array([qrels[q].get(d, 0) for q, d in doc_pairs])
+
+# Train logistic regression
+model = LogisticRegression()
+model.fit(X_train, y_train)
+
+# Learned weights
+print(f"Sparse weight: {model.coef_[0][0]}")
+print(f"Dense weight: {model.coef_[0][1]}")
+```
+
+This approach optimizes fusion weights directly for the target metric.
+
+## Related Topics
+
+- [Sparse Retrieval](/search/sparse-retrieval) - BM25, SPLADE, and learned sparse methods
+- [Dense Retrieval](/search/dense-retrieval) - HNSW and flat vector search
+- [Reranking](/search/reranking) - Neural reranking for final-stage optimization

@@ -1,0 +1,366 @@
+---
+title: Pyserini Integration
+description: Understanding the relationship between Anserini and Pyserini and how to use them together
+---
+
+## What is Pyserini?
+
+[Pyserini](http://pyserini.io/) is a Python toolkit for reproducible information retrieval research built on top of Anserini. It provides Python bindings to Anserini's Java implementations, making it easy to use Anserini's capabilities from Python.
+
+<Note>
+**From the Anserini README**: "Most Anserini features are exposed in the Pyserini Python interface. If you're more comfortable with Python, start there, although Anserini forms an important building block of Pyserini, so it remains worthwhile to learn about Anserini."
+</Note>
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────┐
+│          Your Python Code           │
+└─────────────────┬───────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────┐
+│           Pyserini (Python)         │
+│  ┌────────────────────────────────┐ │
+│  │   Python API & Utilities       │ │
+│  └────────────┬───────────────────┘ │
+│               │ JNI Bindings        │
+│               ▼                     │
+│  ┌────────────────────────────────┐ │
+│  │   Anserini (Java)              │ │
+│  │   - SimpleSearcher             │ │
+│  │   - IndexReaderUtils           │ │
+│  │   - Dense/Sparse Searchers     │ │
+│  └────────────┬───────────────────┘ │
+└────────────────┼────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────┐
+│      Apache Lucene (Java)           │
+└─────────────────────────────────────┘
+```
+
+## When to Use Python (Pyserini) vs Java (Anserini)
+
+### Use Pyserini (Python) when:
+
+<CardGroup cols={2}>
+  <Card title="Rapid Prototyping" icon="bolt">
+    Python's interactive environment is ideal for experimentation and quick iterations
+  </Card>
+  
+  <Card title="Data Science Workflows" icon="chart-line">
+    Integrate seamlessly with pandas, numpy, scikit-learn, and other Python libraries
+  </Card>
+  
+  <Card title="Neural Models" icon="brain">
+    Work with PyTorch, TensorFlow, or HuggingFace transformers for dense retrieval
+  </Card>
+  
+  <Card title="Notebooks" icon="book-open">
+    Jupyter notebooks for exploratory analysis and documentation
+  </Card>
+</CardGroup>
+
+### Use Anserini (Java) when:
+
+<CardGroup cols={2}>
+  <Card title="Maximum Performance" icon="gauge-high">
+    Direct Java implementation without JNI overhead for production systems
+  </Card>
+  
+  <Card title="Custom Extensions" icon="code">
+    Implement new collection formats, generators, or ranking models in Java
+  </Card>
+  
+  <Card title="Large-Scale Indexing" icon="database">
+    Better memory management and threading control for massive collections
+  </Card>
+  
+  <Card title="CI/CD Integration" icon="gears">
+    Maven-based builds integrate well with Java enterprise environments
+  </Card>
+</CardGroup>
+
+## Shared Resources
+
+### Prebuilt Index Cache
+
+Both Anserini and Pyserini share access to the same prebuilt index infrastructure. When you request a prebuilt index, it's automatically downloaded and cached.
+
+**In Pyserini:**
+
+```python
+from pyserini.search.lucene import LuceneSearcher
+
+# Automatically downloads and caches MS MARCO passage index
+searcher = LuceneSearcher.from_prebuilt_index('msmarco-v1-passage')
+
+hits = searcher.search('what is a lobster roll', k=10)
+for hit in hits:
+    print(f"{hit.docid}: {hit.score:.4f}")
+```
+
+**In Anserini (using fatjar):**
+
+```bash
+java -cp anserini-1.6.0-fatjar.jar io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics msmarco-v1-passage.dev \
+  -output run.txt \
+  -bm25
+```
+
+Both approaches use the **same cached index** stored locally.
+
+<Note>
+**Storage Warning**: Prebuilt indexes can be large (several GB to hundreds of GB). See the [prebuilt indexes guide](https://github.com/castorini/anserini/blob/master/docs/prebuilt-indexes.md) for details.
+</Note>
+
+### Index Compatibility
+
+Indexes built with Anserini are fully compatible with Pyserini:
+
+**Build index with Anserini:**
+
+```bash
+bin/run.sh io.anserini.index.IndexCollection \
+  -collection JsonCollection \
+  -generator DefaultLuceneDocumentGenerator \
+  -threads 8 \
+  -input collections/mycollection \
+  -index indexes/mycollection \
+  -storePositions -storeDocvectors -storeRaw
+```
+
+**Search with Pyserini:**
+
+```python
+from pyserini.search.lucene import LuceneSearcher
+
+# Use the index built by Anserini
+searcher = LuceneSearcher('indexes/mycollection')
+hits = searcher.search('query text')
+```
+
+## Cross-Language Workflows
+
+### Workflow 1: Index with Anserini, Search with Pyserini
+
+This is a common pattern for production systems:
+
+```python
+# Python script for searching
+from pyserini.search.lucene import LuceneSearcher
+import pandas as pd
+
+# Load Anserini-built index
+searcher = LuceneSearcher('indexes/products')
+
+# Search and analyze results
+queries = pd.read_csv('queries.csv')
+results = []
+
+for idx, row in queries.iterrows():
+    hits = searcher.search(row['query'], k=10)
+    for rank, hit in enumerate(hits):
+        results.append({
+            'qid': row['qid'],
+            'docid': hit.docid,
+            'rank': rank + 1,
+            'score': hit.score
+        })
+
+results_df = pd.DataFrame(results)
+results_df.to_csv('results.csv', index=False)
+```
+
+### Workflow 2: Hybrid Retrieval with Python
+
+Combine BM25 (via Anserini) with dense retrieval (PyTorch):
+
+```python
+from pyserini.search.lucene import LuceneSearcher
+from pyserini.search.faiss import FaissSearcher, DenseSearchResult
+import numpy as np
+
+# Sparse retrieval (BM25)
+sparse_searcher = LuceneSearcher.from_prebuilt_index('msmarco-v1-passage')
+sparse_hits = sparse_searcher.search(query, k=100)
+
+# Dense retrieval (vector search)
+dense_searcher = FaissSearcher.from_prebuilt_index(
+    'msmarco-v1-passage.bge-base-en-v1.5',
+    'castorini/bge-base-en-v1.5'
+)
+dense_hits = dense_searcher.search(query, k=100)
+
+# Hybrid fusion (reciprocal rank fusion)
+def reciprocal_rank_fusion(hits_list, k=60):
+    scores = {}
+    for hits in hits_list:
+        for rank, hit in enumerate(hits):
+            docid = hit.docid
+            scores[docid] = scores.get(docid, 0) + 1 / (k + rank + 1)
+    return sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+fused_results = reciprocal_rank_fusion([sparse_hits, dense_hits])
+print(f"Top result: {fused_results[0]}")
+```
+
+### Workflow 3: Regression Testing
+
+Anserini's regression framework can be adapted for Python validation:
+
+```python
+# Validate reproduction with Pyserini
+from pyserini.search.lucene import LuceneSearcher
+from pyserini.eval.trec_eval import TrecEval
+
+searcher = LuceneSearcher.from_prebuilt_index('msmarco-v1-passage')
+
+# Run queries
+topics = 'msmarco-passage-dev-subset'
+run_file = searcher.batch_search(
+    topics=topics,
+    output='run.pyserini.txt',
+    k=1000
+)
+
+# Evaluate
+evaluator = TrecEval('msmarco-passage-dev-subset')
+results = evaluator.evaluate(run_file)
+
+print(f"MRR@10: {results['MRR@10']:.4f}")
+assert abs(results['MRR@10'] - 0.1840) < 0.0001, "Reproduction failed!"
+```
+
+## API Mapping: Anserini → Pyserini
+
+Key Anserini classes exposed in Pyserini:
+
+| Anserini (Java) | Pyserini (Python) | Purpose |
+|-----------------|-------------------|----------|
+| `SimpleSearcher` | `LuceneSearcher` | BM25 and sparse retrieval |
+| `SimpleImpactSearcher` | `LuceneImpactSearcher` | Learned sparse retrieval (SPLADE, etc.) |
+| `SimpleDenseSearcher` | `FaissSearcher` | Dense vector retrieval |
+| `IndexReaderUtils` | `IndexReader` | Index statistics and document access |
+| `SearchCollection` | `batch_search()` | Batch retrieval |
+
+## Development History
+
+<Note>
+Pyserini was originally part of the Anserini repository but was separated into a standalone project in version 0.7.0 (released in 2020). This separation allows independent development while maintaining tight integration.
+</Note>
+
+### Key Integration Points in Anserini
+
+Over Anserini's development, many features have been added specifically to support Pyserini:
+
+- **v0.7.0**: Removed Pyserini from repo; refactored `SimpleSearcher`; added `IndexReaderUtils`
+- **v0.8.0**: Exposed additional hooks in `SimpleSearcher` and `IndexReaderUtils`
+- **v0.9.0**: Added `SimpleNearestNeighborSearcher` for approximate nearest neighbor search
+- **v0.13.2**: Added `SimpleImpactSearcher` for learned sparse retrieval
+- **v0.22.0**: Added ONNX support with Pyserini bindings
+- **v0.38.0**: Refactored dense searchers for cleaner Pyserini bindings
+
+## Example: End-to-End RAG Pipeline
+
+Here's a complete example combining Anserini/Pyserini with LLMs:
+
+```python
+import openai
+from pyserini.search.lucene import LuceneSearcher
+
+# Initialize searcher with prebuilt index
+searcher = LuceneSearcher.from_prebuilt_index('msmarco-v1-passage')
+
+def retrieval_augmented_generation(question: str, k: int = 3) -> str:
+    """
+    RAG pipeline: Retrieve relevant passages, then generate answer with LLM
+    """
+    # Step 1: Retrieve relevant passages
+    hits = searcher.search(question, k=k)
+    
+    # Step 2: Build context from retrieved passages
+    context_passages = []
+    for i, hit in enumerate(hits):
+        doc = searcher.doc(hit.docid)
+        context_passages.append(f"Passage {i+1}: {doc.raw()}")
+    
+    context = "\n\n".join(context_passages)
+    
+    # Step 3: Generate answer with LLM
+    prompt = f"""Answer the question based on the following context:
+
+{context}
+
+Question: {question}
+
+Answer:"""
+    
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    return response.choices[0].message.content
+
+# Use the pipeline
+question = "What is the capital of France?"
+answer = retrieval_augmented_generation(question)
+print(f"Q: {question}")
+print(f"A: {answer}")
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Start with Pyserini" icon="python">
+    Begin with Pyserini for rapid development, then optimize with Anserini if needed
+  </Card>
+  
+  <Card title="Shared Indexes" icon="share-nodes">
+    Build indexes once with Anserini, use from both Java and Python
+  </Card>
+  
+  <Card title="Version Alignment" icon="code-compare">
+    Keep Anserini and Pyserini versions compatible (check release notes)
+  </Card>
+  
+  <Card title="Performance Testing" icon="stopwatch">
+    Profile Python vs Java performance for your specific use case
+  </Card>
+</CardGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Pyserini Documentation" icon="book" href="https://pyserini.io">
+    Official Pyserini documentation and tutorials
+  </Card>
+  
+  <Card title="Pyserini Repository" icon="github" href="https://github.com/castorini/pyserini">
+    Source code, issues, and examples
+  </Card>
+  
+  <Card title="Anserini Release Notes" icon="file-lines" href="https://github.com/castorini/anserini/tree/master/docs/release-notes">
+    Track Pyserini-related changes in Anserini
+  </Card>
+  
+  <Card title="Prebuilt Indexes" icon="database" href="https://github.com/castorini/anserini/blob/master/docs/prebuilt-indexes.md">
+    Available prebuilt indexes for both tools
+  </Card>
+</CardGroup>
+
+## Migration Guide
+
+If you're moving from pure Anserini to Pyserini:
+
+1. **Install Pyserini**: `pip install pyserini`
+2. **Convert Java search commands** to Python API calls (see mapping table above)
+3. **Reuse existing indexes** - no need to rebuild
+4. **Update scripts** to use Python imports instead of shell commands
+5. **Test compatibility** with a small subset of queries
+
+The migration is typically straightforward since Pyserini is designed as a thin wrapper around Anserini's core functionality.

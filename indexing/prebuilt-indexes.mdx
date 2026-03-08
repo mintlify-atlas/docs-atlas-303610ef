@@ -1,0 +1,282 @@
+---
+title: Prebuilt Indexes
+description: Using Anserini's prebuilt indexes for common IR collections
+---
+
+Anserini provides prebuilt indexes for common collections used in NLP and IR research. These indexes are automatically downloaded and cached locally, eliminating the need to index collections manually.
+
+## Overview
+
+Prebuilt indexes include:
+- **Inverted indexes** - Traditional keyword search (BM25)
+- **Impact indexes** - Learned sparse models (SPLADE, uniCOIL, DeepImpact)
+- **HNSW indexes** - Dense vector retrieval
+- **Flat vector indexes** - Brute-force dense retrieval
+
+All indexes are hosted on University of Waterloo servers and Hugging Face, and are automatically downloaded and verified by Anserini.
+
+## Quick Start
+
+Simply specify a prebuilt index name instead of a local path:
+
+```bash
+bin/run.sh io.anserini.search.SearchCollection \
+  -index msmarco-v1-passage \
+  -topics tools/topics-and-qrels/topics.msmarco-passage.dev-subset.txt \
+  -output runs/run.msmarco-passage.txt \
+  -bm25
+```
+
+On first use, Anserini will:
+1. Recognize `msmarco-v1-passage` as a prebuilt index name
+2. Download the index from the configured location
+3. Verify the MD5 checksum
+4. Extract the index to the cache directory
+5. Use the cached index for searching
+
+Subsequent uses will skip download and use the cached copy.
+
+## Viewing Index Information
+
+To download a prebuilt index and view its statistics:
+
+```bash
+bin/run.sh io.anserini.index.IndexReaderUtils -index cacm -stats
+```
+
+Output:
+```text
+Index statistics
+----------------
+documents:             3204
+documents (non-empty): 3204
+unique terms:          14363
+total terms:           320968
+index_path:            /home/user/.cache/pyserini/indexes/lucene-index.cacm.20221005.252b5e.cfe14d543c6a27f4d742fb2d0099b8e0
+total_size:            2.9 MB
+```
+
+<Note>
+  For multi-segment indexes built without `-optimize`, `unique_terms` will show -1. This is expected behavior, not a bug.
+</Note>
+
+## Cache Management
+
+### Cache Location
+
+By default, indexes are cached in:
+```
+~/.cache/pyserini/indexes/
+```
+
+<Note>
+  The cache uses the `pyserini` directory for compatibility - prebuilt indexes are shared between Anserini (Java) and Pyserini (Python).
+</Note>
+
+### Custom Cache Directory
+
+Set a custom cache location using either:
+
+**Environment Variable**:
+```bash
+export ANSERINI_INDEX_CACHE=/data/indexes
+```
+
+**Java System Property**:
+```bash
+bin/run.sh io.anserini.search.SearchCollection \
+  -Danserini.index.cache=/data/indexes \
+  -index msmarco-v1-passage \
+  ...
+```
+
+### Cache Directory Structure
+
+Indexes are stored with this naming scheme:
+```
+[tarball-name].[checksum]
+```
+
+Example:
+```
+~/.cache/pyserini/indexes/
+  lucene-inverted.msmarco-v1-passage.20221004.252b5e.678876e8c99a89933d553609a0fd8793/
+  lucene-hnsw.msmarco-v1-passage.bge-base-en-v1.5.20250326.77c8de.0c54c40f2c45fd8e3edeedd7fae4a214/
+  ...
+```
+
+## Manual Index Management
+
+You can manually download, verify, and manage indexes for more control.
+
+<Steps>
+  <Step title="Find Download URL">
+    Index metadata is stored in JSON files in the Anserini repository:
+    ```
+    src/main/resources/prebuilt-indexes/[index-type]/[collection-name].json
+    ```
+
+    Example for MS MARCO V1 Passage:
+    ```
+    src/main/resources/prebuilt-indexes/msmarco-v1-passage-inverted.json
+    ```
+
+    The JSON contains download URLs like:
+    ```
+    https://huggingface.co/datasets/castorini/prebuilt-indexes-msmarco-v1/resolve/main/passage/original/lucene-inverted/tf/lucene-inverted.msmarco-v1-passage.20221004.252b5e.tar.gz
+    ```
+  </Step>
+
+  <Step title="Download and Verify">
+    Download the tarball:
+    ```bash
+    wget https://huggingface.co/.../lucene-inverted.msmarco-v1-passage.20221004.252b5e.tar.gz
+    ```
+
+    Verify MD5 checksum (from JSON metadata):
+    ```bash
+    md5sum lucene-inverted.msmarco-v1-passage.20221004.252b5e.tar.gz
+    # Should match: 678876e8c99a89933d553609a0fd8793
+    ```
+  </Step>
+
+  <Step title="Extract">
+    ```bash
+    tar -xzf lucene-inverted.msmarco-v1-passage.20221004.252b5e.tar.gz
+    ```
+  </Step>
+
+  <Step title="Use with -index Path">
+    ```bash
+    bin/run.sh io.anserini.search.SearchCollection \
+      -index /path/to/extracted/index \
+      -topics topics.msmarco-passage.dev-subset.txt \
+      -output run.txt \
+      -bm25
+    ```
+  </Step>
+</Steps>
+
+### Sharing Indexes Across Users
+
+For multi-user systems, you can:
+
+1. Download and extract index to shared location:
+   ```bash
+   /shared/indexes/msmarco-v1-passage/
+   ```
+
+2. Each user creates a symlink in their cache directory:
+   ```bash
+   ln -s /shared/indexes/msmarco-v1-passage \
+     ~/.cache/pyserini/indexes/lucene-inverted.msmarco-v1-passage.20221004.252b5e.678876e8c99a89933d553609a0fd8793
+   ```
+
+3. Users can now reference `-index msmarco-v1-passage` without downloading
+
+## Recovering from Partial Downloads
+
+If a download is interrupted:
+
+<Steps>
+  <Step title="Navigate to Cache">
+    ```bash
+    cd ~/.cache/pyserini/indexes/
+    ```
+  </Step>
+
+  <Step title="Remove Partial Files">
+    Delete any `.tar.gz` files:
+    ```bash
+    rm *.tar.gz
+    ```
+
+    Delete any partially extracted directories:
+    ```bash
+    rm -rf lucene-inverted.msmarco-v1-passage.*
+    ```
+  </Step>
+
+  <Step title="Retry">
+    Rerun your original command - Anserini will download fresh:
+    ```bash
+    bin/run.sh io.anserini.search.SearchCollection -index msmarco-v1-passage ...
+    ```
+  </Step>
+</Steps>
+
+## Available Prebuilt Indexes
+
+Bindings for prebuilt indexes are defined in:
+```
+io.anserini.index.prebuilt.PrebuiltInvertedIndex      # Inverted indexes
+io.anserini.index.prebuilt.PrebuiltImpactIndex        # Impact indexes  
+io.anserini.index.prebuilt.PrebuiltHnswDenseIndex     # HNSW indexes
+io.anserini.index.prebuilt.PrebuiltFlatDenseIndex     # Flat indexes
+```
+
+### Common Collections
+
+**MS MARCO V1**:
+- `msmarco-v1-passage` - Passage ranking
+- `msmarco-v1-passage-full` - With all storage flags
+- `msmarco-v1-passage-slim` - Minimal storage
+- `msmarco-v1-doc` - Document ranking
+- `msmarco-v1-doc-segmented` - Segmented documents
+
+**MS MARCO V2**:
+- `msmarco-v2-passage`
+- `msmarco-v2-doc`
+- `msmarco-v2-doc-segmented`
+
+**BEIR Collections**:
+- `beir-v1.0.0-[dataset].flat` - Flat indexes
+- `beir-v1.0.0-[dataset].multifield` - Multifield indexes
+
+Datasets: `nq`, `hotpotqa`, `fiqa`, `arguana`, `scidocs`, `scifact`, `trec-covid`, and more.
+
+**Other Collections**:
+- `cacm` - Classic CACM test collection
+- Various test collections used in IR research
+
+### Impact Indexes (Learned Sparse)
+
+**SPLADE**:
+- `msmarco-v1-passage.splade-pp-ed`
+- `beir-v1.0.0-[dataset].splade-pp-ed`
+
+**uniCOIL**:
+- `msmarco-v1-doc-segmented.unicoil`
+- `msmarco-v2-passage.unicoil-0shot`
+
+### Dense Vector Indexes
+
+Prebuilt HNSW indexes for various embedding models are available. See the prebuilt index listings in the source repository for the full catalog.
+
+## Index Metadata
+
+Each prebuilt index includes metadata providing:
+- **Download URLs** - Primary and mirror locations
+- **MD5 Checksum** - For integrity verification  
+- **Description** - Collection and index details
+- **Build Date** - When the index was created
+- **Index Type** - Inverted, impact, HNSW, flat
+
+Metadata files are located in:
+```
+src/main/resources/prebuilt-indexes/
+```
+
+## Prebuilt Index Page
+
+A comprehensive list of all available prebuilt indexes is maintained in the Anserini repository:
+
+[docs/prebuilt-indexes.md](https://github.com/castorini/anserini/blob/master/docs/prebuilt-indexes.md)
+
+This page is automatically generated from test cases and updated with every build, so it always reflects the current state of available indexes.
+
+## See Also
+
+- [IndexCollection Command](/indexing/index-collection) - Building custom indexes
+- [Index Options](/indexing/index-options) - Configuration details
+- [Dense Vectors](/indexing/dense-vectors) - Dense vector indexing

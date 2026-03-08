@@ -1,0 +1,93 @@
+---
+title: Regression Testing Overview
+description: Understanding Anserini's regression testing framework and reproducibility promise
+---
+
+## What is Regression Testing?
+
+Regression experiments in Anserini are hooked into a rigorous end-to-end regression framework driven by the `run_regression.py` script. This framework ensures that all experimental results are reproducible and that new commits do not break any existing functionality.
+
+## The Regression Framework
+
+The regression framework automatically performs the following actions based on configuration files stored in `src/main/resources/regression/`:
+
+<Steps>
+  <Step title="Build the Index">
+    The framework builds the index from scratch using the specified collection and indexing parameters.
+  </Step>
+  
+  <Step title="Verify Index Statistics">
+    Index statistics are verified as a sanity check to ensure the index has been built properly. This includes checking document counts, term counts, and other key metrics.
+  </Step>
+  
+  <Step title="Perform Retrieval Runs">
+    Retrieval runs are executed with standard settings defined in the regression configuration.
+  </Step>
+  
+  <Step title="Evaluate and Verify Results">
+    The framework evaluates the runs and verifies that effectiveness results match expected values.
+  </Step>
+</Steps>
+
+## The Anserini Reproducibility Promise
+
+<Info>
+  **It is the highest priority of the project to ensure that all regression experiments are reproducible _all the time_.**
+</Info>
+
+This means that anyone with the document collection should be able to reproduce exactly the effectiveness scores reported in the regression documentation pages.
+
+Anserini holds this ideal in such high esteem that if you discover a broken regression before the team does, **Jimmy Lin will buy you a beverage of choice** (coffee, beer, etc.) at the next event you see him (e.g., SIGIR, TREC, etc.).
+
+### Help Verify Reproducibility
+
+You can help the community by:
+
+1. Running regression tests yourself
+2. Verifying that you can reproduce the reported results
+3. Sending a pull request with a simple note confirming your successful reproduction
+
+<Warning>
+  Since regression documentation is auto-generated, pull requests should be sent against the raw templates in `src/main/resources/docgen/templates`, not the generated pages.
+</Warning>
+
+In turn, you'll be recognized as a [contributor](https://github.com/castorini/anserini/graphs/contributors).
+
+## Continuous Testing
+
+Internally at Waterloo, the team continuously runs regression tests on dedicated machines (`tuna.cs.uwaterloo.ca` and `orca.cs.uwaterloo.ca`) to ensure new commits don't break existing experimental runs.
+
+A [change log](https://github.com/castorini/anserini/blob/master/docs/regressions-log.md) documents all substantive changes to regression tests and results.
+
+## Auto-Generated Documentation
+
+All regression documentation pages are auto-generated based on:
+
+- **Configuration files**: YAML files in `src/main/resources/regression/`
+- **Templates**: Raw templates in `src/main/resources/docgen/templates/`
+
+This ensures that documentation stays synchronized with the actual regression code and configurations.
+
+## Why Regression Testing Matters
+
+Regression testing ensures:
+
+- **Reproducibility**: Core tenet of scientific research
+- **Correctness**: Catches bugs and unintended changes
+- **Consistency**: Results remain stable across versions
+- **Trust**: Users can rely on published effectiveness scores
+- **Collaboration**: Easy verification by the research community
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="MS MARCO Regressions" icon="database" href="/regressions/ms-marco">
+    Learn about MS MARCO V1, V2, and V2.1 regressions
+  </Card>
+  <Card title="BEIR Regressions" icon="chart-line" href="/regressions/beir">
+    Explore BEIR benchmark regressions
+  </Card>
+  <Card title="Running Regressions" icon="terminal" href="/regressions/running-regressions">
+    Complete guide to running regression tests
+  </Card>
+</CardGroup>
